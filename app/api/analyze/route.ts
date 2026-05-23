@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
       extracted.type === "text" ? calculateFKScore(extracted.content) : null;
 
     const userContent: Anthropic.MessageParam["content"] =
-      extracted.type === "pdf"
+      extracted.type === "pdf_vision"
         ? [
             {
               type: "document",
