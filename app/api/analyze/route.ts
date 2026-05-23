@@ -8,7 +8,7 @@ import { saveReview, type AnalysisSections } from "@/lib/reviews-store";
 export const runtime = "nodejs";
 export const maxDuration = 120;
 
-const client = new Anthropic();
+const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 function parseSections(fullText: string): AnalysisSections {
   function extract(tag: string): string {
