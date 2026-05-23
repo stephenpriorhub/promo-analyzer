@@ -61,7 +61,12 @@ export async function POST(req: NextRequest) {
         : [
             {
               type: "text",
-              text: `Analyze this promotional sales letter according to the instructions.\n\n---\n\n${extracted.content}`,
+              text: [
+                "Analyze this promotional sales letter according to the instructions.",
+                extracted.type === "text" && extracted.pageNote ? `\n${extracted.pageNote}` : "",
+                "\n\n---\n\n",
+                extracted.content,
+              ].join(""),
             },
           ];
 
