@@ -41,7 +41,7 @@ export async function POST(req: NextRequest) {
     const buffer = Buffer.from(bytes);
     const extracted = await extractFile(buffer, file.name);
 
-    // FK score: calculate from text if available
+    // FK score from text when available
     let fkScore: FKScore | null = null;
     if (extracted.type === "text") {
       fkScore = calculateFKScore(extracted.content);
@@ -49,42 +49,23 @@ export async function POST(req: NextRequest) {
       fkScore = calculateFKScore(extracted.textForFK);
     }
 
-    // Build the message content
-    let userContent: Anthropic.MessageParam["content"];
+    const isPdf = extracted.type === "pdf_raw";
 
-    if (extracted.type === "pdf_raw") {
-      // Upload PDF via Files API — works for text-based, image-based, scanned, jsPDF, any PDF
+    if (isPdf) {
+      // Upload via Files API
       const uploadedFile = await client.beta.files.upload({
         file: new File([extracted.buffer], file.name, { type: "application/pdf" }),
       });
       uploadedFileId = uploadedFile.id;
-
-      const preamble = [
-        "Analyze this promotional sales letter according to the instructions.",
-        extracted.pageNote ? `\n${extracted.pageNote}` : "",
-      ].join("");
-
-      userContent = [
-        {
-          type: "document",
-          source: { type: "file", file_id: uploadedFileId },
-        } as Anthropic.DocumentBlockParam,
-        { type: "text", text: preamble },
-      ];
-    } else {
-      // .docx — use extracted text directly
-      userContent = [
-        {
-          type: "text",
-          text: [
-            "Analyze this promotional sales letter according to the instructions.",
-            extracted.pageNote ? `\n${extracted.pageNote}` : "",
-            "\n\n---\n\n",
-            extracted.content,
-          ].join(""),
-        },
-      ];
     }
+
+    const preamble = [
+      "Analyze this promotional sales letter according to the instructions.",
+      extracted.type !== "text" && (extracted as { pageNote?: string }).pageNote
+        ? `\n${(extracted as { pageNote?: string }).pageNote}`
+        : "",
+      extracted.type === "text" && extracted.pageNote ? `\n${extracted.pageNote}` : "",
+    ].join("");
 
     const encoder = new TextEncoder();
     let fullText = "";
@@ -92,12 +73,49 @@ export async function POST(req: NextRequest) {
     const stream = new ReadableStream({
       async start(controller) {
         try {
-          const anthropicStream = await client.messages.stream({
-            model: "claude-sonnet-4-6",
-            max_tokens: 8000,
-            system: SYSTEM_PROMPT,
-            messages: [{ role: "user", content: userContent }],
-          });
+          let anthropicStream;
+
+          if (isPdf && uploadedFileId) {
+            // PDF path: use beta.messages with files-api beta enabled
+            anthropicStream = await client.beta.messages.stream({
+              model: "claude-sonnet-4-6",
+              max_tokens: 8000,
+              system: SYSTEM_PROMPT,
+              betas: ["files-api-2025-04-14"],
+              messages: [
+                {
+                  role: "user",
+                  content: [
+                    {
+                      type: "document",
+                      source: { type: "file", file_id: uploadedFileId },
+                    },
+                    { type: "text", text: preamble },
+                  ],
+                },
+              ],
+            });
+          } else {
+            // Text path (.docx or text-extracted PDF)
+            const textContent =
+              extracted.type === "text" ? extracted.content : "";
+            anthropicStream = await client.messages.stream({
+              model: "claude-sonnet-4-6",
+              max_tokens: 8000,
+              system: SYSTEM_PROMPT,
+              messages: [
+                {
+                  role: "user",
+                  content: [
+                    {
+                      type: "text",
+                      text: `${preamble}\n\n---\n\n${textContent}`,
+                    },
+                  ],
+                },
+              ],
+            });
+          }
 
           for await (const chunk of anthropicStream) {
             if (
@@ -109,6 +127,8 @@ export async function POST(req: NextRequest) {
               controller.enqueue(encoder.encode(text));
             }
           }
+
+          console.log("RAW PREVIEW:", JSON.stringify(fullText.slice(0, 300)));
 
           const sections = parseSections(fullText);
           const saved = saveReview(
@@ -124,7 +144,6 @@ export async function POST(req: NextRequest) {
         } catch (err) {
           controller.error(err);
         } finally {
-          // Clean up uploaded file from Anthropic's storage
           if (uploadedFileId) {
             client.beta.files.delete(uploadedFileId).catch(() => {});
           }
@@ -140,13 +159,12 @@ export async function POST(req: NextRequest) {
       },
     });
   } catch (err) {
-    // Clean up uploaded file on error
     if (uploadedFileId) {
       client.beta.files.delete(uploadedFileId).catch(() => {});
     }
     console.error(err);
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Analysis failed. Check server logs." },
+      { error: err instanceof Error ? err.message : "Analysis failed." },
       { status: 500 }
     );
   }
