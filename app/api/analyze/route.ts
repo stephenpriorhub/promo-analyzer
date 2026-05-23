@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { extractFile } from "@/lib/extract-text";
-import { calculateFKScore } from "@/lib/fk-score";
+import { calculateFKScore, type FKScore } from "@/lib/fk-score";
 import { SYSTEM_PROMPT } from "@/lib/build-prompt";
 import { saveReview, type AnalysisSections } from "@/lib/reviews-store";
 import { getEnv } from "@/lib/env";
 
 export const runtime = "nodejs";
-export const maxDuration = 120;
+export const maxDuration = 180;
 
 function parseSections(fullText: string): AnalysisSections {
   function extract(tag: string): string {
@@ -28,6 +28,8 @@ function parseSections(fullText: string): AnalysisSections {
 
 export async function POST(req: NextRequest) {
   const client = new Anthropic({ apiKey: getEnv("ANTHROPIC_API_KEY") });
+  let uploadedFileId: string | null = null;
+
   try {
     const formData = await req.formData();
     const file = formData.get("file") as File | null;
@@ -39,36 +41,50 @@ export async function POST(req: NextRequest) {
     const buffer = Buffer.from(bytes);
     const extracted = await extractFile(buffer, file.name);
 
-    const fkScore =
-      extracted.type === "text" ? calculateFKScore(extracted.content) : null;
+    // FK score: calculate from text if available
+    let fkScore: FKScore | null = null;
+    if (extracted.type === "text") {
+      fkScore = calculateFKScore(extracted.content);
+    } else if (extracted.type === "pdf_raw" && extracted.textForFK) {
+      fkScore = calculateFKScore(extracted.textForFK);
+    }
 
-    const userContent: Anthropic.MessageParam["content"] =
-      extracted.type === "pdf_vision"
-        ? [
-            {
-              type: "document",
-              source: {
-                type: "base64",
-                media_type: "application/pdf",
-                data: extracted.base64,
-              },
-            } as Anthropic.DocumentBlockParam,
-            {
-              type: "text",
-              text: "Analyze this promotional sales letter according to the instructions.",
-            },
-          ]
-        : [
-            {
-              type: "text",
-              text: [
-                "Analyze this promotional sales letter according to the instructions.",
-                extracted.type === "text" && extracted.pageNote ? `\n${extracted.pageNote}` : "",
-                "\n\n---\n\n",
-                extracted.content,
-              ].join(""),
-            },
-          ];
+    // Build the message content
+    let userContent: Anthropic.MessageParam["content"];
+
+    if (extracted.type === "pdf_raw") {
+      // Upload PDF via Files API — works for text-based, image-based, scanned, jsPDF, any PDF
+      const uploadedFile = await client.beta.files.upload({
+        file: new File([extracted.buffer], file.name, { type: "application/pdf" }),
+      });
+      uploadedFileId = uploadedFile.id;
+
+      const preamble = [
+        "Analyze this promotional sales letter according to the instructions.",
+        extracted.pageNote ? `\n${extracted.pageNote}` : "",
+      ].join("");
+
+      userContent = [
+        {
+          type: "document",
+          source: { type: "file", file_id: uploadedFileId },
+        } as Anthropic.DocumentBlockParam,
+        { type: "text", text: preamble },
+      ];
+    } else {
+      // .docx — use extracted text directly
+      userContent = [
+        {
+          type: "text",
+          text: [
+            "Analyze this promotional sales letter according to the instructions.",
+            extracted.pageNote ? `\n${extracted.pageNote}` : "",
+            "\n\n---\n\n",
+            extracted.content,
+          ].join(""),
+        },
+      ];
+    }
 
     const encoder = new TextEncoder();
     let fullText = "";
@@ -102,15 +118,16 @@ export async function POST(req: NextRequest) {
             fkScore?.gradeLevel ?? null
           );
 
-          const meta = JSON.stringify({
-            __meta: true,
-            reviewId: saved.id,
-            fkScore,
-          });
+          const meta = JSON.stringify({ __meta: true, reviewId: saved.id, fkScore });
           controller.enqueue(encoder.encode(`\n[META]${meta}[/META]`));
           controller.close();
         } catch (err) {
           controller.error(err);
+        } finally {
+          // Clean up uploaded file from Anthropic's storage
+          if (uploadedFileId) {
+            client.beta.files.delete(uploadedFileId).catch(() => {});
+          }
         }
       },
     });
@@ -123,9 +140,13 @@ export async function POST(req: NextRequest) {
       },
     });
   } catch (err) {
+    // Clean up uploaded file on error
+    if (uploadedFileId) {
+      client.beta.files.delete(uploadedFileId).catch(() => {});
+    }
     console.error(err);
     return NextResponse.json(
-      { error: "Analysis failed. Check server logs." },
+      { error: err instanceof Error ? err.message : "Analysis failed. Check server logs." },
       { status: 500 }
     );
   }
