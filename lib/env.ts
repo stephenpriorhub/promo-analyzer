@@ -1,27 +1,20 @@
 import fs from "fs";
 import path from "path";
 
-function loadEnvLocal(): Record<string, string> {
+// Read .env.local fresh on every call — avoids Turbopack module-init cwd issues
+export function getEnv(key: string): string | undefined {
+  if (process.env[key]) return process.env[key];
   try {
     const content = fs.readFileSync(
       path.join(process.cwd(), ".env.local"),
       "utf-8"
     );
-    const result: Record<string, string> = {};
     for (const line of content.split("\n")) {
       const eq = line.indexOf("=");
-      if (eq > 0) {
-        result[line.slice(0, eq).trim()] = line.slice(eq + 1).trim();
+      if (eq > 0 && line.slice(0, eq).trim() === key) {
+        return line.slice(eq + 1).trim();
       }
     }
-    return result;
-  } catch {
-    return {};
-  }
-}
-
-const localEnv = loadEnvLocal();
-
-export function getEnv(key: string): string | undefined {
-  return process.env[key] ?? localEnv[key];
+  } catch {}
+  return undefined;
 }
