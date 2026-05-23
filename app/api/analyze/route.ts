@@ -4,11 +4,10 @@ import { extractFile } from "@/lib/extract-text";
 import { calculateFKScore } from "@/lib/fk-score";
 import { SYSTEM_PROMPT } from "@/lib/build-prompt";
 import { saveReview, type AnalysisSections } from "@/lib/reviews-store";
+import { getEnv } from "@/lib/env";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
-
-const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 function parseSections(fullText: string): AnalysisSections {
   function extract(tag: string): string {
@@ -28,6 +27,7 @@ function parseSections(fullText: string): AnalysisSections {
 }
 
 export async function POST(req: NextRequest) {
+  const client = new Anthropic({ apiKey: getEnv("ANTHROPIC_API_KEY") });
   try {
     const formData = await req.formData();
     const file = formData.get("file") as File | null;
