@@ -21,7 +21,7 @@ interface Props {
 const TABS = [
   { key: "headline", label: "Headline" },
   { key: "outline", label: "Outline" },
-  { key: "evaldo", label: "Evaldo" },
+  { key: "evaldo", label: "16-Word Sales Letter" },
   { key: "cub", label: "CUB Review" },
   { key: "offer", label: "Offer & Summary" },
 ] as const;
