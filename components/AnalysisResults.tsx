@@ -10,6 +10,11 @@ import EvaldoSection from "./EvaldoSection";
 import CUBViewer from "./CUBViewer";
 import OfferSection from "./OfferSection";
 
+const NAVY = "#012479";
+const NAVY_LIGHT = "#0a3a9e";
+const NAVY_BG = "#f0f4fc";
+const NAVY_BORDER = "#c8d5f0";
+
 interface Props {
   filename: string;
   sections: AnalysisSections;
@@ -28,7 +33,6 @@ const TABS = [
 
 type TabKey = (typeof TABS)[number]["key"];
 
-// Ordered steps that match the streaming sequence
 const STEPS: { key: keyof AnalysisSections; label: string }[] = [
   { key: "headline", label: "Headline Analysis" },
   { key: "outline", label: "Promo Outline" },
@@ -45,42 +49,37 @@ function ProgressBar({ sections, streaming }: { sections: AnalysisSections; stre
   const completed = STEPS.filter((s) => sections[s.key] !== "").length;
   const total = STEPS.length;
   const pct = Math.round((completed / total) * 100);
-
-  // Find the currently active step (first one still empty)
   const activeStep = STEPS.find((s) => sections[s.key] === "");
 
   return (
-    <div className="mb-4 p-3 bg-blue-50 border border-blue-100 rounded-lg">
+    <div className="mb-4 p-3 rounded-lg" style={{ background: NAVY_BG, border: `1px solid ${NAVY_BORDER}` }}>
       <div className="flex items-center justify-between mb-1.5">
-        <span className="text-xs font-medium text-blue-700">
+        <span className="text-xs font-medium" style={{ color: NAVY }}>
           {activeStep ? `Generating ${activeStep.label}…` : "Wrapping up…"}
         </span>
-        <span className="text-xs font-bold text-blue-600">{pct}%</span>
+        <span className="text-xs font-bold" style={{ color: NAVY }}>{pct}%</span>
       </div>
 
-      {/* Bar */}
-      <div className="h-2 bg-blue-100 rounded-full overflow-hidden">
+      <div className="h-2 rounded-full overflow-hidden" style={{ background: NAVY_BORDER }}>
         <div
-          className="h-full bg-blue-500 rounded-full transition-all duration-500 flex items-center justify-end pr-1"
-          style={{ width: `${pct}%` }}
+          className="h-full rounded-full transition-all duration-500"
+          style={{ width: `${pct}%`, background: NAVY }}
         />
       </div>
 
-      {/* Step dots */}
       <div className="flex justify-between mt-2">
         {STEPS.map((step) => {
           const done = sections[step.key] !== "";
           const active = activeStep?.key === step.key;
           return (
-            <div key={step.key} className="flex flex-col items-center gap-0.5" style={{ minWidth: 0 }}>
+            <div key={step.key} className="flex flex-col items-center">
               <div
-                className={`w-2 h-2 rounded-full transition-all duration-300 ${
-                  done
-                    ? "bg-blue-500"
-                    : active
-                    ? "bg-blue-300 animate-pulse"
-                    : "bg-blue-100"
-                }`}
+                className="w-2 h-2 rounded-full transition-all duration-300"
+                style={{
+                  background: done ? NAVY : active ? NAVY_LIGHT : NAVY_BORDER,
+                  opacity: active ? undefined : done ? 1 : 0.5,
+                  animation: active ? "pulse 1.5s infinite" : undefined,
+                }}
               />
             </div>
           );
@@ -135,7 +134,10 @@ export default function AnalysisResults({
           <button
             onClick={handleExport}
             disabled={exporting}
-            className="shrink-0 flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 disabled:opacity-50 transition-colors"
+            className="shrink-0 flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm font-medium disabled:opacity-50 transition-colors"
+            style={{ background: NAVY }}
+            onMouseEnter={e => (e.currentTarget.style.background = NAVY_LIGHT)}
+            onMouseLeave={e => (e.currentTarget.style.background = NAVY)}
           >
             {exporting ? "Exporting…" : "⬇ Export Word"}
           </button>
@@ -144,49 +146,52 @@ export default function AnalysisResults({
 
       <ProgressBar sections={sections} streaming={streaming} />
 
-      <div className="border-b border-gray-200">
+      {/* Tabs */}
+      <div className="border-b" style={{ borderColor: NAVY_BORDER }}>
         <nav className="flex gap-1 -mb-px overflow-x-auto">
-          {TABS.map((tab) => (
-            <button
-              key={tab.key}
-              onClick={() => setActiveTab(tab.key)}
-              className={`px-4 py-2.5 text-sm font-medium whitespace-nowrap border-b-2 transition-colors ${
-                activeTab === tab.key
-                  ? "border-blue-600 text-blue-600"
-                  : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
-              }`}
-            >
-              {tab.label}
-              {streaming && sections[tab.key] === "" && (
-                <span className="ml-1.5 inline-block w-1.5 h-1.5 rounded-full bg-gray-300 animate-pulse" />
-              )}
-              {streaming && sections[tab.key] !== "" && (
-                <span className="ml-1.5 inline-block w-1.5 h-1.5 rounded-full bg-green-400" />
-              )}
-            </button>
-          ))}
+          {TABS.map((tab) => {
+            const isActive = activeTab === tab.key;
+            const isDone = streaming && sections[tab.key] !== "";
+            const isPending = streaming && sections[tab.key] === "";
+            return (
+              <button
+                key={tab.key}
+                onClick={() => setActiveTab(tab.key)}
+                className="px-4 py-2.5 text-sm font-medium whitespace-nowrap border-b-2 transition-colors"
+                style={{
+                  borderBottomColor: isActive ? NAVY : "transparent",
+                  color: isActive ? NAVY : "#6b7280",
+                }}
+              >
+                {tab.label}
+                {isPending && (
+                  <span className="ml-1.5 inline-block w-1.5 h-1.5 rounded-full bg-gray-300 animate-pulse" />
+                )}
+                {isDone && (
+                  <span className="ml-1.5 inline-block w-1.5 h-1.5 rounded-full bg-green-400" />
+                )}
+              </button>
+            );
+          })}
         </nav>
       </div>
 
       <div className="min-h-64">
-        {activeTab === "headline" && (
-          <HeadlineSection content={sections.headline} />
-        )}
-        {activeTab === "outline" && (
-          <OutlineSection content={sections.outline} />
-        )}
-        {activeTab === "evaldo" && (
-          <EvaldoSection content={sections.evaldo} />
-        )}
+        {activeTab === "headline" && <HeadlineSection content={sections.headline} />}
+        {activeTab === "outline" && <OutlineSection content={sections.outline} />}
+        {activeTab === "evaldo" && <EvaldoSection content={sections.evaldo} />}
         {activeTab === "cub" && (
-          sections.cub
-            ? <CUBViewer content={sections.cub} />
-            : (
-              <div className="flex flex-col items-center justify-center py-16 gap-3 text-gray-400">
-                <div className="w-8 h-8 border-3 border-gray-200 border-t-blue-400 rounded-full animate-spin" style={{ borderWidth: 3 }} />
-                <p className="text-sm">Reviewing full promo copy — this is the longest step…</p>
-              </div>
-            )
+          sections.cub ? (
+            <CUBViewer content={sections.cub} />
+          ) : (
+            <div className="flex flex-col items-center justify-center py-16 gap-3 text-gray-400">
+              <div
+                className="w-8 h-8 rounded-full animate-spin"
+                style={{ border: `3px solid ${NAVY_BORDER}`, borderTopColor: NAVY }}
+              />
+              <p className="text-sm">Reviewing full promo copy — this is the longest step…</p>
+            </div>
+          )
         )}
         {activeTab === "offer" && (
           <OfferSection

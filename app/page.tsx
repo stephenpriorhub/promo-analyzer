@@ -121,11 +121,16 @@ export default function Home() {
   const hasResults = filename !== null;
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
-      <header className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-bold text-gray-900">SP&apos;s Promo Analyzer</h1>
-          <p className="text-xs text-gray-500 mt-0.5">MTA Internal Tool</p>
+    <div className="min-h-screen flex flex-col" style={{ background: "#f4f6fb" }}>
+      {/* Navy header */}
+      <header style={{ background: "#012479" }} className="px-6 py-3 flex items-center justify-between shadow-md">
+        <div className="flex items-center gap-4">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/logos/mta-logo-white.png" alt="MTA" className="h-8 w-auto" />
+          <div className="border-l border-white/30 pl-4">
+            <h1 className="text-base font-bold text-white leading-tight">SP&apos;s Promo Analyzer</h1>
+            <p className="text-xs mt-0.5" style={{ color: "#a8bde8" }}>From MTA&apos;s AI Labs &mdash; Internal Use Only</p>
+          </div>
         </div>
         {hasResults && !streaming && (
           <button
@@ -135,7 +140,10 @@ export default function Home() {
               setFkScore(null);
               setError(null);
             }}
-            className="text-sm text-gray-500 hover:text-gray-700 px-3 py-1.5 rounded border border-gray-200 hover:border-gray-300 transition-colors"
+            className="text-sm px-3 py-1.5 rounded border transition-colors font-medium"
+            style={{ borderColor: "rgba(255,255,255,0.3)", color: "white" }}
+            onMouseEnter={e => (e.currentTarget.style.background = "rgba(255,255,255,0.1)")}
+            onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
           >
             Analyze New Promo
           </button>
@@ -143,9 +151,10 @@ export default function Home() {
       </header>
 
       <div className="flex flex-1 overflow-hidden">
-        <aside className="w-64 shrink-0 bg-white border-r border-gray-200 flex flex-col">
-          <div className="px-4 py-3 border-b border-gray-100">
-            <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Past Reviews</h2>
+        {/* Sidebar */}
+        <aside className="w-64 shrink-0 flex flex-col border-r" style={{ background: "#fff", borderColor: "#dde4f0" }}>
+          <div className="px-4 py-3 border-b" style={{ borderColor: "#dde4f0", background: "#f0f4fc" }}>
+            <h2 className="text-xs font-semibold uppercase tracking-wider" style={{ color: "#012479" }}>Past Reviews</h2>
           </div>
           <div className="flex-1 overflow-y-auto">
             <PastReviews onLoad={handleLoadReview} refreshTrigger={refreshReviews} />
@@ -163,14 +172,14 @@ export default function Home() {
             <div className="max-w-2xl mx-auto mt-12">
               <PromoUploader onFile={handleFile} disabled={streaming} />
               <p className="text-center text-xs text-gray-400 mt-4">
-                Analyzes against Evaldo&apos;s 16-Word framework · CUB review · FK score · Offer summary · Stock tease prediction
+                16-Word Sales Letter framework · CUB review · FK score · Offer summary · Stock tease prediction
               </p>
             </div>
           )}
 
           {streaming && !sections.headline && (
             <div className="max-w-2xl mx-auto mt-12 flex flex-col items-center gap-4">
-              <div className="w-10 h-10 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin" />
+              <div className="w-10 h-10 border-4 rounded-full animate-spin" style={{ borderColor: "#dde4f0", borderTopColor: "#012479" }} />
               <p className="text-sm text-gray-500">Analyzing <span className="font-medium">{filename}</span>…</p>
               <p className="text-xs text-gray-400">This takes 30–60 seconds for a full promo</p>
             </div>

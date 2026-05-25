@@ -7,25 +7,27 @@ interface Props {
   effectivenessScore: number | null;
 }
 
-function scoreColor(score: number): string {
-  if (score >= 8) return "bg-green-100 text-green-800 border-green-300";
-  if (score >= 6) return "bg-yellow-100 text-yellow-800 border-yellow-300";
-  return "bg-red-100 text-red-800 border-red-300";
+function effectivenessStyle(score: number) {
+  if (score >= 8) return { background: "#dcfce7", borderColor: "#86efac", color: "#166534" };
+  if (score >= 6) return { background: "#fef9c3", borderColor: "#fde047", color: "#854d0e" };
+  return { background: "#fee2e2", borderColor: "#fca5a5", color: "#991b1b" };
 }
 
 export default function ScoreBadges({ fkScore, effectivenessScore }: Props) {
   if (!fkScore && effectivenessScore === null) return null;
 
+  const navyBadge = { background: "#f0f4fc", borderColor: "#c8d5f0", color: "#012479" };
+
   return (
     <div className="flex flex-wrap gap-3 mb-6">
       {fkScore && (
         <>
-          <div className="flex items-center gap-2 px-4 py-2 rounded-lg border bg-blue-50 border-blue-200 text-blue-800">
+          <div className="flex items-center gap-2 px-4 py-2 rounded-lg border" style={navyBadge}>
             <span className="text-sm font-medium">FK Reading Ease</span>
             <span className="font-bold text-lg">{fkScore.readingEase}</span>
-            <span className="text-xs text-blue-600">({fkScore.label})</span>
+            {fkScore.label && <span className="text-xs opacity-70">({fkScore.label})</span>}
           </div>
-          <div className="flex items-center gap-2 px-4 py-2 rounded-lg border bg-blue-50 border-blue-200 text-blue-800">
+          <div className="flex items-center gap-2 px-4 py-2 rounded-lg border" style={navyBadge}>
             <span className="text-sm font-medium">Grade Level</span>
             <span className="font-bold text-lg">{fkScore.gradeLevel}</span>
           </div>
@@ -33,7 +35,8 @@ export default function ScoreBadges({ fkScore, effectivenessScore }: Props) {
       )}
       {effectivenessScore !== null && (
         <div
-          className={`flex items-center gap-2 px-4 py-2 rounded-lg border font-medium ${scoreColor(effectivenessScore)}`}
+          className="flex items-center gap-2 px-4 py-2 rounded-lg border font-medium"
+          style={effectivenessStyle(effectivenessScore)}
         >
           <span className="text-sm">Effectiveness</span>
           <span className="font-bold text-lg">{effectivenessScore}/10</span>
