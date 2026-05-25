@@ -55,13 +55,13 @@ function ProgressBar({ sections, streaming }: { sections: AnalysisSections; stre
         <span className="text-xs font-medium text-blue-700">
           {activeStep ? `Generating ${activeStep.label}…` : "Wrapping up…"}
         </span>
-        <span className="text-xs text-blue-500">{completed}/{total} sections</span>
+        <span className="text-xs font-bold text-blue-600">{pct}%</span>
       </div>
 
       {/* Bar */}
-      <div className="h-1.5 bg-blue-100 rounded-full overflow-hidden">
+      <div className="h-2 bg-blue-100 rounded-full overflow-hidden">
         <div
-          className="h-full bg-blue-500 rounded-full transition-all duration-500"
+          className="h-full bg-blue-500 rounded-full transition-all duration-500 flex items-center justify-end pr-1"
           style={{ width: `${pct}%` }}
         />
       </div>
