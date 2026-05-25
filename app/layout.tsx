@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Promo Analyzer — MTA Internal Tool",
-  description: "Analyze financial newsletter promos against the Evaldo framework",
+  title: "SP's Promo Analyzer",
+  description: "Analyze financial newsletter promos against the 16-Word Sales Letter framework",
 };
 
 export default function RootLayout({

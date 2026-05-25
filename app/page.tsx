@@ -124,7 +124,7 @@ export default function Home() {
     <div className="min-h-screen bg-gray-50 flex flex-col">
       <header className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold text-gray-900">Promo Analyzer</h1>
+          <h1 className="text-xl font-bold text-gray-900">SP&apos;s Promo Analyzer</h1>
           <p className="text-xs text-gray-500 mt-0.5">MTA Internal Tool</p>
         </div>
         {hasResults && !streaming && (

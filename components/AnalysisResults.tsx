@@ -28,6 +28,68 @@ const TABS = [
 
 type TabKey = (typeof TABS)[number]["key"];
 
+// Ordered steps that match the streaming sequence
+const STEPS: { key: keyof AnalysisSections; label: string }[] = [
+  { key: "headline", label: "Headline Analysis" },
+  { key: "outline", label: "Promo Outline" },
+  { key: "evaldo", label: "16-Word Framework" },
+  { key: "cub", label: "CUB Review" },
+  { key: "offer", label: "Offer Summary" },
+  { key: "stockTease", label: "Stock Tease" },
+  { key: "effectiveness", label: "Effectiveness Score" },
+];
+
+function ProgressBar({ sections, streaming }: { sections: AnalysisSections; streaming?: boolean }) {
+  if (!streaming) return null;
+
+  const completed = STEPS.filter((s) => sections[s.key] !== "").length;
+  const total = STEPS.length;
+  const pct = Math.round((completed / total) * 100);
+
+  // Find the currently active step (first one still empty)
+  const activeStep = STEPS.find((s) => sections[s.key] === "");
+
+  return (
+    <div className="mb-4 p-3 bg-blue-50 border border-blue-100 rounded-lg">
+      <div className="flex items-center justify-between mb-1.5">
+        <span className="text-xs font-medium text-blue-700">
+          {activeStep ? `Generating ${activeStep.label}…` : "Wrapping up…"}
+        </span>
+        <span className="text-xs text-blue-500">{completed}/{total} sections</span>
+      </div>
+
+      {/* Bar */}
+      <div className="h-1.5 bg-blue-100 rounded-full overflow-hidden">
+        <div
+          className="h-full bg-blue-500 rounded-full transition-all duration-500"
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+
+      {/* Step dots */}
+      <div className="flex justify-between mt-2">
+        {STEPS.map((step) => {
+          const done = sections[step.key] !== "";
+          const active = activeStep?.key === step.key;
+          return (
+            <div key={step.key} className="flex flex-col items-center gap-0.5" style={{ minWidth: 0 }}>
+              <div
+                className={`w-2 h-2 rounded-full transition-all duration-300 ${
+                  done
+                    ? "bg-blue-500"
+                    : active
+                    ? "bg-blue-300 animate-pulse"
+                    : "bg-blue-100"
+                }`}
+              />
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export default function AnalysisResults({
   filename,
   sections,
@@ -80,6 +142,8 @@ export default function AnalysisResults({
         )}
       </div>
 
+      <ProgressBar sections={sections} streaming={streaming} />
+
       <div className="border-b border-gray-200">
         <nav className="flex gap-1 -mb-px overflow-x-auto">
           {TABS.map((tab) => (
@@ -117,7 +181,12 @@ export default function AnalysisResults({
         {activeTab === "cub" && (
           sections.cub
             ? <CUBViewer content={sections.cub} />
-            : <p className="text-sm text-gray-400 italic">CUB review generating…</p>
+            : (
+              <div className="flex flex-col items-center justify-center py-16 gap-3 text-gray-400">
+                <div className="w-8 h-8 border-3 border-gray-200 border-t-blue-400 rounded-full animate-spin" style={{ borderWidth: 3 }} />
+                <p className="text-sm">Reviewing full promo copy — this is the longest step…</p>
+              </div>
+            )
         )}
         {activeTab === "offer" && (
           <OfferSection
