@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import type { TrainingData } from "@/lib/reviews-store";
+import type { TrainingData, PromoType } from "@/lib/reviews-store";
+import { PROMO_TYPES } from "@/lib/reviews-store";
 
 const NAVY = "#012479";
 const NAVY_BG = "#f0f4fc";
@@ -85,6 +86,9 @@ export default function TrainingTab({
   onEffectivenessUpdate,
   onApplied,
 }: Props) {
+  const [promoType, setPromoType] = useState<PromoType | null>(
+    initialTraining?.promoType ?? null
+  );
   const [performanceScore, setPerformanceScore] = useState<number | null>(
     initialTraining?.performanceScore ?? null
   );
@@ -106,6 +110,7 @@ export default function TrainingTab({
     if (!reviewId || !hasScore) return;
     setSaving(true);
     const training: TrainingData = {
+      promoType,
       performanceScore,
       myScore,
       reasoning: reasoning.trim(),
@@ -135,6 +140,7 @@ export default function TrainingTab({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           effectiveness: effectivenessContent,
+          promoType,
           performanceScore,
           myScore,
           reasoning: reasoning.trim(),
@@ -175,6 +181,35 @@ export default function TrainingTab({
           Score this promo based on actual results to calibrate future analyses.
           Performance score is weighted ~70%, your assessment ~30%.
         </p>
+      </div>
+
+      {/* Promo Type */}
+      <div>
+        <label
+          className="block text-xs font-semibold uppercase tracking-wider mb-1.5"
+          style={{ color: NAVY }}
+        >
+          Promo Type
+        </label>
+        <div className="flex flex-wrap gap-2">
+          {PROMO_TYPES.map((t) => {
+            const selected = promoType === t;
+            return (
+              <button
+                key={t}
+                onClick={() => setPromoType(selected ? null : t)}
+                className="px-3 py-1.5 rounded-lg text-xs font-medium border transition-all"
+                style={{
+                  background: selected ? NAVY : "white",
+                  color: selected ? "white" : NAVY,
+                  borderColor: NAVY_BORDER,
+                }}
+              >
+                {t}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {/* Performance Score */}

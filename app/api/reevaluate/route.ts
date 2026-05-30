@@ -10,6 +10,7 @@ const PROMPT = `You are a financial promo analyst reconsidering an effectiveness
 {EFFECTIVENESS}
 
 ## Publisher Feedback
+Promo type: {PROMO_TYPE}
 Actual performance (how it did in market): {PERF_SCORE}
 Publisher's own assessment: {MY_SCORE}
 Publisher notes: {REASONING}
@@ -32,7 +33,7 @@ Score: X/10
 Rationale: [2–3 sentences explaining the reconsidered score and what the feedback revealed]`;
 
 export async function POST(req: NextRequest) {
-  const { effectiveness, performanceScore, myScore, reasoning } = await req.json();
+  const { effectiveness, promoType, performanceScore, myScore, reasoning } = await req.json();
 
   if (performanceScore === null && myScore === null) {
     return NextResponse.json({ error: "At least one score is required" }, { status: 400 });
@@ -46,6 +47,7 @@ export async function POST(req: NextRequest) {
 
   const prompt = PROMPT
     .replace("{EFFECTIVENESS}", effectiveness?.trim() || "No prior effectiveness analysis.")
+    .replace("{PROMO_TYPE}", promoType ?? "not specified")
     .replace("{PERF_SCORE}", perfText)
     .replace("{MY_SCORE}", myText)
     .replace("{REASONING}", notesText);

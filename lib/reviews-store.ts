@@ -14,7 +14,18 @@ export interface SupplementalFile {
   uploadedAt: string;
 }
 
+export const PROMO_TYPES = [
+  "Front-end",
+  "Backend Live Webinar",
+  "Backend VSL",
+  "Mega-Bundle Live Webinar",
+  "Mega-Bundle VSL",
+] as const;
+
+export type PromoType = (typeof PROMO_TYPES)[number];
+
 export interface TrainingData {
+  promoType: PromoType | null;
   performanceScore: number | null; // actual real-world performance (high weight)
   myScore: number | null;          // analyst's personal assessment (lower weight)
   reasoning: string;
@@ -79,6 +90,7 @@ export function getAllReviews(): SavedReview[] {
  */
 export function getTrainingExamples(): Array<{
   name: string;
+  promoType: PromoType | null;
   predictedScore: number | null;
   performanceScore: number | null;
   myScore: number | null;
@@ -102,6 +114,7 @@ export function getTrainingExamples(): Array<{
     }
     return {
       name,
+      promoType: r.training!.promoType ?? null,
       predictedScore: r.effectivenessScore,
       performanceScore: r.training!.performanceScore,
       myScore: r.training!.myScore,

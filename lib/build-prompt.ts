@@ -5,6 +5,7 @@
 export function buildCalibrationBlock(
   examples: Array<{
     name: string;
+    promoType?: string | null;
     predictedScore: number | null;
     performanceScore: number | null;
     myScore: number | null;
@@ -16,6 +17,7 @@ export function buildCalibrationBlock(
 
   const lines = examples.map((ex) => {
     const parts: string[] = [`- **${ex.name}**`];
+    if (ex.promoType) parts.push(`  Promo type: ${ex.promoType}`);
     if (ex.bigIdea) parts.push(`  Big Idea: "${ex.bigIdea}"`);
     if (ex.predictedScore !== null) parts.push(`  Tool predicted: ${ex.predictedScore}/10`);
     if (ex.performanceScore !== null) parts.push(`  Actual market performance: ${ex.performanceScore}/10`);
