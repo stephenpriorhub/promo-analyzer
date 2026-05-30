@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
+import fs from "fs";
+import path from "path";
 import { extractFile } from "@/lib/extract-text";
 import { calculateFKScore, type FKScore } from "@/lib/fk-score";
-import { SYSTEM_PROMPT } from "@/lib/build-prompt";
-import { saveReview, type AnalysisSections } from "@/lib/reviews-store";
+import { SYSTEM_PROMPT, buildCalibrationBlock } from "@/lib/build-prompt";
+import { saveReview, getTrainingExamples, updateSourceFileMeta, FILES_DIR, type AnalysisSections } from "@/lib/reviews-store";
 import { getEnv } from "@/lib/env";
 
 export const runtime = "nodejs";
@@ -29,6 +31,11 @@ function parseSections(fullText: string): AnalysisSections {
 export async function POST(req: NextRequest) {
   const client = new Anthropic({ apiKey: getEnv("ANTHROPIC_API_KEY") });
   let uploadedFileId: string | null = null;
+
+  // Build calibration block from any past reviews with publisher training data
+  const trainingExamples = getTrainingExamples();
+  const calibrationBlock = buildCalibrationBlock(trainingExamples);
+  const systemPrompt = SYSTEM_PROMPT + calibrationBlock;
 
   try {
     const formData = await req.formData();
@@ -79,8 +86,8 @@ export async function POST(req: NextRequest) {
             // PDF path: use beta.messages with files-api beta enabled
             anthropicStream = await client.beta.messages.stream({
               model: "claude-sonnet-4-6",
-              max_tokens: 8000,
-              system: SYSTEM_PROMPT,
+              max_tokens: 16000,
+              system: systemPrompt,
               betas: ["files-api-2025-04-14"],
               messages: [
                 {
@@ -101,8 +108,8 @@ export async function POST(req: NextRequest) {
               extracted.type === "text" ? extracted.content : "";
             anthropicStream = await client.messages.stream({
               model: "claude-sonnet-4-6",
-              max_tokens: 8000,
-              system: SYSTEM_PROMPT,
+              max_tokens: 16000,
+              system: systemPrompt,
               messages: [
                 {
                   role: "user",
@@ -137,6 +144,17 @@ export async function POST(req: NextRequest) {
             fkScore?.readingEase ?? null,
             fkScore?.gradeLevel ?? null
           );
+
+          // Save original source file to disk
+          try {
+            const fileDir = path.join(FILES_DIR, saved.id);
+            fs.mkdirSync(fileDir, { recursive: true });
+            const ext = file.name.toLowerCase().endsWith(".pdf") ? "pdf" : "docx";
+            fs.writeFileSync(path.join(fileDir, `source.${ext}`), buffer);
+            updateSourceFileMeta(saved.id, file.name, buffer.length);
+          } catch {
+            // non-fatal — analysis proceeds even if file save fails
+          }
 
           const meta = JSON.stringify({ __meta: true, reviewId: saved.id, fkScore });
           controller.enqueue(encoder.encode(`\n[META]${meta}[/META]`));

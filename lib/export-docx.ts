@@ -17,7 +17,9 @@ interface CUBSegment {
   reason?: string;
 }
 
-function cubHighlightColor(type: string): typeof HighlightColor[keyof typeof HighlightColor] | undefined {
+function cubHighlightColor(
+  type: string
+): (typeof HighlightColor)[keyof typeof HighlightColor] | undefined {
   if (type === "confusing") return HighlightColor.YELLOW;
   if (type === "unbelievable") return HighlightColor.RED;
   if (type === "boring") return HighlightColor.LIGHT_GRAY;
@@ -48,54 +50,84 @@ function sectionHeading(title: string): Paragraph {
   });
 }
 
+
 function buildCUBParagraphs(cubText: string): Paragraph[] {
   let segments: CUBSegment[] = [];
   try {
-    const jsonStart = cubText.indexOf("[");
-    const jsonEnd = cubText.lastIndexOf("]") + 1;
+    const cleaned = cubText.replace(/```(?:json)?/g, "").trim();
+    const jsonStart = cleaned.indexOf("[");
+    const jsonEnd = cleaned.lastIndexOf("]") + 1;
     if (jsonStart !== -1 && jsonEnd > jsonStart) {
-      segments = JSON.parse(cubText.slice(jsonStart, jsonEnd));
+      const parsed = JSON.parse(cleaned.slice(jsonStart, jsonEnd));
+      if (Array.isArray(parsed)) segments = parsed;
     }
   } catch {
-    return [new Paragraph({ children: [new TextRun({ text: cubText })] })];
+    return [new Paragraph({ children: [new TextRun({ text: cubText, size: 22 })] })];
   }
 
-  const runs = segments.map((seg) => {
-    const highlight = cubHighlightColor(seg.type);
-    const run = new TextRun({
-      text: seg.text + " ",
-      highlight,
-      size: 22,
-    });
-    return run;
-  });
+  // Only flagged items (no "clean" segments in this format)
+  const flagged = segments.filter((s) => s.type !== "clean");
+
+  if (flagged.length === 0) {
+    return [
+      new Paragraph({
+        children: [new TextRun({ text: "✓ No flagged items — copy looks clean.", size: 22, italics: true })],
+      }),
+    ];
+  }
 
   const paragraphs: Paragraph[] = [];
-  let chunk: TextRun[] = [];
-  for (const run of runs) {
-    chunk.push(run);
-    if (chunk.length >= 5) {
-      paragraphs.push(new Paragraph({ children: [...chunk], spacing: { after: 80 } }));
-      chunk = [];
-    }
-  }
-  if (chunk.length > 0) {
-    paragraphs.push(new Paragraph({ children: chunk, spacing: { after: 80 } }));
-  }
 
-  const legend: Paragraph[] = [
-    new Paragraph({
-      children: [
-        new TextRun({ text: "Legend: ", bold: true, size: 20 }),
-        new TextRun({ text: "■ Confusing  ", highlight: HighlightColor.YELLOW, size: 20 }),
-        new TextRun({ text: "■ Unbelievable  ", highlight: HighlightColor.RED, size: 20 }),
-        new TextRun({ text: "■ Boring  ", highlight: HighlightColor.LIGHT_GRAY, size: 20 }),
-      ],
-      spacing: { after: 200 },
-    }),
+  const groups: Array<{ type: CUBSegment["type"]; label: string; color: string }> = [
+    { type: "confusing",    label: "CONFUSING",    color: "92400E" },
+    { type: "unbelievable", label: "UNBELIEVABLE",  color: "7F1D1D" },
+    { type: "boring",       label: "BORING",        color: "374151" },
   ];
 
-  return [...legend, ...paragraphs];
+  for (const { type, label, color } of groups) {
+    const items = flagged.filter((s) => s.type === type);
+    if (items.length === 0) continue;
+
+    const highlight = cubHighlightColor(type);
+
+    // Group heading
+    paragraphs.push(
+      new Paragraph({
+        children: [
+          new TextRun({
+            text: `${label}  (${items.length})`,
+            bold: true,
+            size: 24,
+            color,
+            highlight,
+          }),
+        ],
+        spacing: { before: 240, after: 100 },
+      })
+    );
+
+    // Each flagged item
+    for (const item of items) {
+      paragraphs.push(
+        new Paragraph({
+          children: [
+            new TextRun({ text: `"${item.text}"`, size: 22, italics: true }),
+          ],
+          spacing: { after: 40 },
+          indent: { left: 360 },
+        }),
+        new Paragraph({
+          children: [
+            new TextRun({ text: `↳ ${item.reason ?? ""}`, size: 20, color: "555555" }),
+          ],
+          spacing: { after: 140 },
+          indent: { left: 360 },
+        })
+      );
+    }
+  }
+
+  return paragraphs;
 }
 
 export async function buildExportDocx(
@@ -112,10 +144,19 @@ export async function buildExportDocx(
     }),
     new Paragraph({
       children: [
-        new TextRun({ text: `File: ${filename}`, italics: true, size: 20, color: "666666" }),
+        new TextRun({
+          text: `File: ${filename}`,
+          italics: true,
+          size: 20,
+          color: "666666",
+        }),
         new TextRun({ text: "   |   ", size: 20, color: "666666" }),
         new TextRun({
-          text: `Analyzed: ${new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}`,
+          text: `Analyzed: ${new Date().toLocaleDateString("en-US", {
+            month: "long",
+            day: "numeric",
+            year: "numeric",
+          })}`,
           italics: true,
           size: 20,
           color: "666666",
@@ -140,13 +181,19 @@ export async function buildExportDocx(
       })
     );
 
-    const effMatch = sections.effectiveness.match(/(\d+)\s*\/\s*10/);
+    // Fixed: handle decimal scores like 7.5/10
+    const effMatch = sections.effectiveness.match(/(\d+(?:\.\d+)?)\s*\/\s*10/);
     if (effMatch) {
       children.push(
         new Paragraph({
           children: [
             new TextRun({ text: `Effectiveness Score: `, bold: true, size: 22 }),
-            new TextRun({ text: `${effMatch[1]}/10`, size: 22, bold: true, color: "2563EB" }),
+            new TextRun({
+              text: `${effMatch[1]}/10`,
+              size: 22,
+              bold: true,
+              color: "2563EB",
+            }),
           ],
           spacing: { after: 100 },
         })
@@ -154,11 +201,15 @@ export async function buildExportDocx(
     }
   }
 
-  const sectionsToRender: Array<{ title: string; key: keyof AnalysisSections; isCUB?: boolean }> = [
+  const sectionsToRender: Array<{
+    title: string;
+    key: keyof AnalysisSections;
+    isCUB?: boolean;
+  }> = [
     { title: "Headline Analysis (4 U's)", key: "headline" },
     { title: "Promo Outline", key: "outline" },
-    { title: "Evaldo Framework Analysis", key: "evaldo" },
-    { title: "CUB Review", key: "cub", isCUB: true },
+    { title: "16-Word Sales Letter", key: "evaldo" },
+    { title: "CUB Review — Full Copy with Annotations", key: "cub", isCUB: true },
     { title: "Offer Summary", key: "offer" },
     { title: "Stock Tease", key: "stockTease" },
     { title: "Effectiveness Score", key: "effectiveness" },

@@ -1,11 +1,13 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import PromoUploader from "@/components/PromoUploader";
 import AnalysisResults from "@/components/AnalysisResults";
 import PastReviews from "@/components/PastReviews";
-import type { AnalysisSections, SavedReview } from "@/lib/reviews-store";
+import type { AnalysisSections, SavedReview, TrainingData } from "@/lib/reviews-store";
 import type { FKScore } from "@/lib/fk-score";
+
+const NAVY = "#012479";
 
 const EMPTY_SECTIONS: AnalysisSections = {
   headline: "",
@@ -34,166 +36,267 @@ function parseSections(raw: string): AnalysisSections {
   };
 }
 
-function extractFKFromMeta(text: string): FKScore | null {
+function extractMetaFromStream(text: string): { fkScore: FKScore | null; reviewId: string | null } {
   const m = text.match(/\[META\]([\s\S]*?)\[\/META\]/);
-  if (!m) return null;
+  if (!m) return { fkScore: null, reviewId: null };
   try {
     const meta = JSON.parse(m[1]);
-    return meta.fkScore ?? null;
+    return { fkScore: meta.fkScore ?? null, reviewId: meta.reviewId ?? null };
   } catch {
-    return null;
+    return { fkScore: null, reviewId: null };
   }
 }
 
 function extractScore(effectiveness: string): number | null {
-  const m = effectiveness.match(/(\d+)\s*\/\s*10/);
-  return m ? parseInt(m[1], 10) : null;
+  const m = effectiveness.match(/(\d+(?:\.\d+)?)\s*\/\s*10/);
+  return m ? parseFloat(m[1]) : null;
 }
 
+interface Job {
+  id: string;
+  filename: string;
+  reviewId: string | null;
+  sections: AnalysisSections;
+  fkScore: FKScore | null;
+  streaming: boolean;
+  error: string | null;
+}
+
+type ViewState =
+  | { type: "upload" }
+  | { type: "job"; id: string }
+  | { type: "review"; data: SavedReview };
+
 export default function Home() {
-  const [filename, setFilename] = useState<string | null>(null);
-  const [streaming, setStreaming] = useState(false);
-  const [sections, setSections] = useState<AnalysisSections>(EMPTY_SECTIONS);
-  const [fkScore, setFkScore] = useState<FKScore | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [jobs, setJobs] = useState<Job[]>([]);
+  const [view, setView] = useState<ViewState>({ type: "upload" });
   const [refreshReviews, setRefreshReviews] = useState(0);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleFile = useCallback(async (file: File) => {
-    setFilename(file.name);
-    setSections(EMPTY_SECTIONS);
-    setFkScore(null);
-    setError(null);
-    setStreaming(true);
+  const handleFile = useCallback((file: File) => {
+    const id = crypto.randomUUID();
+    const job: Job = {
+      id,
+      filename: file.name,
+      reviewId: null,
+      sections: EMPTY_SECTIONS,
+      fkScore: null,
+      streaming: true,
+      error: null,
+    };
 
-    try {
-      const formData = new FormData();
-      formData.append("file", file);
+    setJobs((prev) => [...prev, job]);
+    // Only switch to this job if we're on the upload screen — otherwise run in background
+    setView((prev) => (prev.type === "upload" ? { type: "job", id } : prev));
 
-      const res = await fetch("/api/analyze", { method: "POST", body: formData });
-      if (!res.ok || !res.body) {
-        const err = await res.json().catch(() => ({ error: "Unknown error" }));
-        throw new Error(err.error || "Analysis failed");
+    void (async () => {
+      let error: string | null = null;
+
+      try {
+        const formData = new FormData();
+        formData.append("file", file);
+        const res = await fetch("/api/analyze", { method: "POST", body: formData });
+        if (!res.ok || !res.body) {
+          const err = await res.json().catch(() => ({ error: "Unknown error" }));
+          throw new Error(err.error || "Analysis failed");
+        }
+
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let accumulated = "";
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          accumulated += decoder.decode(value, { stream: true });
+          const parsed = parseSections(accumulated);
+          setJobs((prev) =>
+            prev.map((j) => (j.id === id ? { ...j, sections: parsed } : j))
+          );
+        }
+
+        const { fkScore: fk, reviewId: rid } = extractMetaFromStream(accumulated);
+        setJobs((prev) =>
+          prev.map((j) =>
+            j.id === id ? { ...j, fkScore: fk, reviewId: rid } : j
+          )
+        );
+      } catch (err) {
+        error = err instanceof Error ? err.message : "Analysis failed";
       }
 
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let accumulated = "";
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        accumulated += decoder.decode(value, { stream: true });
-        const parsed = parseSections(accumulated);
-        setSections(parsed);
-      }
-
-      const fk = extractFKFromMeta(accumulated);
-      if (fk) setFkScore(fk);
+      setJobs((prev) =>
+        prev.map((j) => (j.id === id ? { ...j, streaming: false, error } : j))
+      );
       setRefreshReviews((n) => n + 1);
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Analysis failed";
-      setError(message);
-    } finally {
-      setStreaming(false);
-    }
+    })();
   }, []);
 
   const handleLoadReview = useCallback((review: SavedReview) => {
-    setFilename(review.filename);
-    setSections(review.sections);
-    setFkScore(
-      review.fkReadingEase !== null && review.fkGradeLevel !== null
-        ? {
-            readingEase: review.fkReadingEase,
-            gradeLevel: review.fkGradeLevel,
-            label: "",
-          }
-        : null
-    );
-    setError(null);
-    setStreaming(false);
+    setView({ type: "review", data: review });
   }, []);
 
-  const effectivenessScore = sections.effectiveness
-    ? extractScore(sections.effectiveness)
+  const handleSelectJob = useCallback((id: string) => {
+    setView({ type: "job", id });
+  }, []);
+
+  // Derive display data from current view
+  const activeJob = view.type === "job" ? jobs.find((j) => j.id === view.id) ?? null : null;
+  const activeReview = view.type === "review" ? view.data : null;
+
+  const displayFilename = activeJob?.filename ?? activeReview?.filename ?? null;
+
+  const displaySections: AnalysisSections | null = activeJob?.sections ?? (activeReview
+    ? {
+        headline: activeReview.sections?.headline ?? "",
+        outline: activeReview.sections?.outline ?? "",
+        evaldo: activeReview.sections?.evaldo ?? "",
+        cub: activeReview.sections?.cub ?? "",
+        offer: activeReview.sections?.offer ?? "",
+        stockTease: activeReview.sections?.stockTease ?? "",
+        effectiveness: activeReview.sections?.effectiveness ?? "",
+      }
+    : null);
+
+  const displayFkScore: FKScore | null = activeJob?.fkScore ??
+    (activeReview?.fkReadingEase != null && activeReview?.fkGradeLevel != null
+      ? { readingEase: activeReview.fkReadingEase, gradeLevel: activeReview.fkGradeLevel, label: "" }
+      : null);
+
+  const displayStreaming = activeJob?.streaming ?? false;
+  const displayError = activeJob?.error ?? null;
+
+  const effectivenessScore = displaySections?.effectiveness
+    ? extractScore(displaySections.effectiveness)
     : null;
 
-  const hasResults = filename !== null;
+  const displayReviewId: string | null = activeJob?.reviewId ?? activeReview?.id ?? null;
+  const displayInitialTraining: TrainingData | undefined = activeReview?.training ?? undefined;
+
+  const hasResults = view.type !== "upload";
+  const inProgressJobs = jobs.filter((j) => j.streaming);
 
   return (
     <div className="min-h-screen flex flex-col" style={{ background: "#f4f6fb" }}>
       {/* Navy header */}
-      <header style={{ background: "#012479" }} className="px-6 py-3 flex items-center justify-between shadow-md">
+      <header
+        style={{ background: NAVY }}
+        className="px-6 py-3 flex items-center justify-between shadow-md"
+      >
         <div className="flex items-center gap-4">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/logos/mta-logo-white.png" alt="MTA" className="h-8 w-auto" />
           <div className="border-l border-white/30 pl-4">
             <h1 className="text-base font-bold text-white leading-tight">SP&apos;s Promo Analyzer</h1>
-            <p className="text-xs mt-0.5" style={{ color: "#a8bde8" }}>From MTA&apos;s AI Labs &mdash; Internal Use Only</p>
+            <p className="text-xs mt-0.5" style={{ color: "#a8bde8" }}>
+              From MTA&apos;s AI Labs &mdash; Internal Use Only
+            </p>
           </div>
         </div>
-        {hasResults && !streaming && (
-          <button
-            onClick={() => {
-              setFilename(null);
-              setSections(EMPTY_SECTIONS);
-              setFkScore(null);
-              setError(null);
-            }}
-            className="text-sm px-3 py-1.5 rounded border transition-colors font-medium"
-            style={{ borderColor: "rgba(255,255,255,0.3)", color: "white" }}
-            onMouseEnter={e => (e.currentTarget.style.background = "rgba(255,255,255,0.1)")}
-            onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
-          >
-            Analyze New Promo
-          </button>
-        )}
+
+        {/* Hidden file input for background uploads */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".docx,.pdf"
+          className="hidden"
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) handleFile(f);
+            e.target.value = "";
+          }}
+        />
+
+        <button
+          onClick={() => fileInputRef.current?.click()}
+          className="text-sm px-3 py-1.5 rounded border transition-colors font-medium"
+          style={{ borderColor: "rgba(255,255,255,0.3)", color: "white", background: "transparent" }}
+          onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.1)")}
+          onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+        >
+          + New Promo
+        </button>
       </header>
 
       <div className="flex flex-1 overflow-hidden">
         {/* Sidebar */}
-        <aside className="w-64 shrink-0 flex flex-col border-r" style={{ background: "#fff", borderColor: "#dde4f0" }}>
-          <div className="px-4 py-3 border-b" style={{ borderColor: "#dde4f0", background: "#f0f4fc" }}>
-            <h2 className="text-xs font-semibold uppercase tracking-wider" style={{ color: "#012479" }}>Past Reviews</h2>
+        <aside
+          className="w-64 shrink-0 flex flex-col border-r"
+          style={{ background: "#fff", borderColor: "#dde4f0" }}
+        >
+          <div
+            className="px-4 py-3 border-b"
+            style={{ borderColor: "#dde4f0", background: "#f0f4fc" }}
+          >
+            <h2
+              className="text-xs font-semibold uppercase tracking-wider"
+              style={{ color: NAVY }}
+            >
+              Past Reviews
+            </h2>
           </div>
           <div className="flex-1 overflow-y-auto">
-            <PastReviews onLoad={handleLoadReview} refreshTrigger={refreshReviews} />
+            <PastReviews
+              onLoad={handleLoadReview}
+              onSelectJob={handleSelectJob}
+              refreshTrigger={refreshReviews}
+              inProgressJobs={inProgressJobs}
+              activeJobId={view.type === "job" ? view.id : undefined}
+            />
           </div>
         </aside>
 
         <main className="flex-1 overflow-y-auto p-6">
-          {error && (
+          {displayError && (
             <div className="mb-6 bg-red-50 border border-red-200 text-red-700 rounded-lg px-4 py-3 text-sm">
-              {error}
+              {displayError}
             </div>
           )}
 
-          {!hasResults && (
+          {/* Upload screen */}
+          {view.type === "upload" && (
             <div className="max-w-2xl mx-auto mt-12">
-              <PromoUploader onFile={handleFile} disabled={streaming} />
+              <PromoUploader onFile={handleFile} disabled={false} />
               <p className="text-center text-xs text-gray-400 mt-4">
                 16-Word Sales Letter framework · CUB review · FK score · Offer summary · Stock tease prediction
               </p>
             </div>
           )}
 
-          {streaming && !sections.headline && (
+          {/* Initial loading spinner (job started but no headline yet) */}
+          {view.type === "job" && displayStreaming && !displaySections?.headline && (
             <div className="max-w-2xl mx-auto mt-12 flex flex-col items-center gap-4">
-              <div className="w-10 h-10 border-4 rounded-full animate-spin" style={{ borderColor: "#dde4f0", borderTopColor: "#012479" }} />
-              <p className="text-sm text-gray-500">Analyzing <span className="font-medium">{filename}</span>…</p>
+              <div
+                className="w-10 h-10 border-4 rounded-full animate-spin"
+                style={{ borderColor: "#dde4f0", borderTopColor: NAVY }}
+              />
+              <p className="text-sm text-gray-500">
+                Analyzing <span className="font-medium">{displayFilename}</span>…
+              </p>
               <p className="text-xs text-gray-400">This takes 30–60 seconds for a full promo</p>
             </div>
           )}
 
-          {hasResults && (sections.headline || streaming) && (
+          {/* Results */}
+          {hasResults && displayFilename && displaySections && (displaySections.headline || displayStreaming) && (
             <div className="max-w-4xl mx-auto">
               <AnalysisResults
-                filename={filename!}
-                sections={sections}
-                fkScore={fkScore}
+                filename={displayFilename}
+                sections={displaySections}
+                fkScore={displayFkScore}
                 effectivenessScore={effectivenessScore}
-                streaming={streaming}
+                streaming={displayStreaming}
+                reviewId={displayReviewId}
+                initialTraining={displayInitialTraining}
+                onScoreApplied={() => setRefreshReviews((n) => n + 1)}
               />
+            </div>
+          )}
+
+          {/* Saved review with no sections (edge case) */}
+          {view.type === "review" && displayFilename && !displaySections?.headline && !displayStreaming && (
+            <div className="max-w-2xl mx-auto mt-12 text-center text-gray-400 text-sm">
+              No analysis content found for this review.
             </div>
           )}
         </main>
