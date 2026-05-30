@@ -1,8 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import type { TrainingData, PromoType } from "@/lib/reviews-store";
-import { PROMO_TYPES } from "@/lib/reviews-store";
+import type { TrainingData } from "@/lib/reviews-store";
+import { PROMO_TYPES, type PromoType } from "@/lib/promo-types";
 
 const NAVY = "#012479";
 const NAVY_BG = "#f0f4fc";

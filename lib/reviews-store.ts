@@ -14,15 +14,8 @@ export interface SupplementalFile {
   uploadedAt: string;
 }
 
-export const PROMO_TYPES = [
-  "Front-end",
-  "Backend Live Webinar",
-  "Backend VSL",
-  "Mega-Bundle Live Webinar",
-  "Mega-Bundle VSL",
-] as const;
-
-export type PromoType = (typeof PROMO_TYPES)[number];
+import type { PromoType } from "./promo-types";
+export { PROMO_TYPES, type PromoType } from "./promo-types";
 
 export interface TrainingData {
   promoType: PromoType | null;

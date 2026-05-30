@@ -1,5 +1,9 @@
 import mammoth from "mammoth";
-import pdfParse from "pdf-parse";
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const pdfParse = require("pdf-parse") as (
+  buf: Buffer,
+  opts?: { max?: number }
+) => Promise<{ text: string; numpages?: number }>;
 
 export type ExtractedFile =
   | { type: "text"; content: string; pageNote?: string }
