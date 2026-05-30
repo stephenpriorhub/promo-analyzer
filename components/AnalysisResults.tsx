@@ -157,6 +157,7 @@ export default function AnalysisResults({
           sections={sections}
           fkScore={fkScore}
           effectivenessScore={effectivenessScore}
+          promoType={initialTraining?.promoType ?? null}
           onClose={() => setBrainOpen(false)}
         />
       )}

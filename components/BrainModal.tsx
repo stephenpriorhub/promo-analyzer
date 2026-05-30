@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import type { AnalysisSections } from "@/lib/reviews-store";
 import type { FKScore } from "@/lib/fk-score";
 
@@ -13,6 +13,7 @@ interface Props {
   sections: AnalysisSections;
   fkScore: FKScore | null;
   effectivenessScore: number | null;
+  promoType?: string | null;
   onClose: () => void;
 }
 
@@ -103,14 +104,43 @@ export default function BrainModal({
   sections,
   fkScore,
   effectivenessScore,
+  promoType,
   onClose,
 }: Props) {
   const [title, setTitle] = useState(defaultTitle);
   const [tags, setTags] = useState("promo, copywriting, analysis");
+  const [tagsLoading, setTagsLoading] = useState(true);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [status, setStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
   const [savedPath, setSavedPath] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
+
+  // Fetch smart tag suggestions on open
+  useEffect(() => {
+    setTagsLoading(true);
+    fetch("/api/brain/suggest-tags", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        filename: defaultTitle,
+        promoType: promoType ?? null,
+        sections: {
+          headline: sections.headline,
+          offer: sections.offer,
+          effectiveness: sections.effectiveness,
+        },
+      }),
+    })
+      .then((r) => r.json())
+      .then((data) => {
+        if (Array.isArray(data.tags) && data.tags.length > 0) {
+          setTags(data.tags.join(", "));
+        }
+      })
+      .catch(() => {}) // keep default on error
+      .finally(() => setTagsLoading(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const noteContent = buildNote(title, tags, sections, fkScore, effectivenessScore);
 
@@ -200,22 +230,30 @@ export default function BrainModal({
 
               {/* Tags */}
               <div>
-                <label
-                  className="block text-xs font-semibold uppercase tracking-wider mb-1.5"
-                  style={{ color: NAVY }}
-                >
-                  Tags{" "}
-                  <span className="font-normal text-gray-400 normal-case">
-                    (comma-separated)
-                  </span>
-                </label>
-                <input
-                  type="text"
+                <div className="flex items-center justify-between mb-1.5">
+                  <label
+                    className="block text-xs font-semibold uppercase tracking-wider"
+                    style={{ color: NAVY }}
+                  >
+                    Tags{" "}
+                    <span className="font-normal text-gray-400 normal-case">
+                      (comma-separated)
+                    </span>
+                  </label>
+                  {tagsLoading && (
+                    <span className="text-xs text-gray-400 animate-pulse">
+                      Suggesting tags…
+                    </span>
+                  )}
+                </div>
+                <textarea
                   value={tags}
                   onChange={(e) => setTags(e.target.value)}
-                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+                  rows={3}
+                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300 font-mono resize-none"
                   style={{ borderColor: NAVY_BORDER }}
                   placeholder="promo, copywriting, analysis"
+                  disabled={tagsLoading}
                 />
               </div>
 
