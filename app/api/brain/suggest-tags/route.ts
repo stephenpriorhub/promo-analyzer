@@ -1,129 +1,95 @@
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import fs from "fs";
-import path from "path";
 import { getEnv } from "@/lib/env";
 
 export const runtime = "nodejs";
 
-// BRAIN_VAULT_DIR = root of the Obsidian vault (for tag scanning).
-// Falls back to local path; on Railway returns empty vocabulary if not set.
-const BRAIN_DIR = process.env.BRAIN_VAULT_DIR ?? "/Users/stephenprior/Documents/github/brain";
+const BRAIN_GITHUB_REPO = process.env.BRAIN_GITHUB_REPO ?? "stephenpriorhub/brain";
+const BRAIN_DIR_LOCAL = "/Users/stephenprior/Documents/github/brain";
 
 /**
- * Parse all tags from a YAML frontmatter block.
- * Handles both inline array format (tags: [a, b]) and
- * YAML block sequence format (tags:\n  - a\n  - b).
- * Also extracts from people: and topic_areas: fields.
+ * Fetch vault tags via GitHub Contents API.
+ * Only reads files in Resources/Promos (where promo notes live) to stay fast.
  */
-function extractTagsFromFrontmatter(content: string): string[] {
-  const tags: string[] = [];
-
-  // Match the frontmatter block (between --- delimiters)
-  const fmMatch = content.match(/^---\n([\s\S]*?)\n---/);
-  if (!fmMatch) return tags;
-  const fm = fmMatch[1];
-
-  // Helper: parse a YAML field that is either inline array or block sequence
-  function parseYamlList(fieldName: string): string[] {
-    const results: string[] = [];
-
-    // Inline: fieldName: [a, b, c]
-    const inlineMatch = fm.match(new RegExp(`^${fieldName}:\\s*\\[([^\\]]*)\\]`, "m"));
-    if (inlineMatch) {
-      inlineMatch[1].split(",")
-        .map((s) => s.trim().replace(/^['"]|['"]$/g, ""))
-        .filter(Boolean)
-        .forEach((t) => results.push(t));
-      return results;
-    }
-
-    // Block sequence: fieldName:\n  - item
-    const blockMatch = fm.match(
-      new RegExp(`^${fieldName}:\\s*\\n((?:[ \\t]+-[^\\n]*\\n?)*)`, "m")
-    );
-    if (blockMatch) {
-      blockMatch[1]
-        .split("\n")
-        .map((l) => l.replace(/^[ \t]+-\s*/, "").trim().replace(/^['"]|['"]$/g, ""))
-        .filter(Boolean)
-        .forEach((t) => results.push(t));
-    }
-    return results;
-  }
-
-  // Gather from tags, topic_areas, and people fields
-  parseYamlList("tags").forEach((t) => tags.push(t));
-  parseYamlList("topic_areas").forEach((t) => tags.push(`topic/${t}`));
-  parseYamlList("people").forEach((t) => {
-    // Convert "First Last" → person/first-last
-    const slug = t.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
-    if (slug) tags.push(`person/${slug}`);
-  });
-
-  return tags;
-}
-
-/**
- * Scan the brain vault and collect the current active tag vocabulary
- * across all relevant namespaces.
- */
-function scanVaultTags(): {
-  people: string[];
-  publishers: string[];
-  orgs: string[];
-  topics: string[];
-  promoTypes: string[];
-} {
+async function scanVaultTagsViaAPI(token: string): Promise<{
+  people: string[]; publishers: string[]; orgs: string[]; topics: string[]; promoTypes: string[];
+}> {
   const people = new Set<string>();
   const publishers = new Set<string>();
   const orgs = new Set<string>();
   const topics = new Set<string>();
   const promoTypes = new Set<string>();
 
-  // Known content_type values from auto-tagged system
   const PROMO_TYPE_ENUMS = new Set([
     "fe-live-webinar", "fe-vsl", "be-live-webinar", "be-vsl",
     "mega-bundle-live-webinar", "mega-bundle-vsl", "external-competitor",
   ]);
 
-  // If vault isn't mounted on this host, return empty vocabulary
-  if (!fs.existsSync(BRAIN_DIR)) {
-    return { people: [], publishers: [], orgs: [], topics: [], promoTypes: [] };
-  }
+  const headers = {
+    Authorization: `Bearer ${token}`,
+    Accept: "application/vnd.github+json",
+    "User-Agent": "promo-analyzer",
+  };
 
-  function walk(dir: string) {
-    let entries: string[];
-    try { entries = fs.readdirSync(dir); } catch { return; }
-    for (const entry of entries) {
-      if (entry.startsWith(".")) continue;
-      const full = path.join(dir, entry);
-      try {
-        const stat = fs.statSync(full);
-        if (stat.isDirectory()) { walk(full); continue; }
-        if (!entry.endsWith(".md")) continue;
-        const content = fs.readFileSync(full, "utf-8");
+  try {
+    // Get the file tree for just the Promos folder (faster than full repo)
+    const treeRes = await fetch(
+      `https://api.github.com/repos/${BRAIN_GITHUB_REPO}/git/trees/main?recursive=1`,
+      { headers }
+    );
+    if (!treeRes.ok) return { people: [], publishers: [], orgs: [], topics: [], promoTypes: [] };
+    const tree = await treeRes.json();
 
-        const tags = extractTagsFromFrontmatter(content);
-        for (const tag of tags) {
-          if (tag.startsWith("person/"))    people.add(tag);
-          else if (tag.startsWith("publisher/")) publishers.add(tag);
-          else if (tag.startsWith("org/"))   orgs.add(tag);
-          else if (tag.startsWith("topic/")) topics.add(tag);
-          else if (PROMO_TYPE_ENUMS.has(tag)) promoTypes.add(tag);
-        }
+    // Filter to .md files only
+    const mdFiles: string[] = (tree.tree as Array<{ path: string; type: string }>)
+      .filter((f) => f.type === "blob" && f.path.endsWith(".md"))
+      .map((f) => f.path)
+      .slice(0, 150); // cap to avoid rate limits
 
-        // Also capture content_type field directly
-        const ctMatch = content.match(/^content_type:\s*["']?([^\n"']+)["']?/m);
-        if (ctMatch) {
-          const ct = ctMatch[1].trim();
-          if (PROMO_TYPE_ENUMS.has(ct)) promoTypes.add(ct);
-        }
-      } catch { continue; }
+    // Fetch files in parallel batches of 10
+    const BATCH = 10;
+    for (let i = 0; i < mdFiles.length; i += BATCH) {
+      const batch = mdFiles.slice(i, i + BATCH);
+      await Promise.all(
+        batch.map(async (path) => {
+          try {
+            const res = await fetch(
+              `https://api.github.com/repos/${BRAIN_GITHUB_REPO}/contents/${encodeURIComponent(path)}`,
+              { headers }
+            );
+            if (!res.ok) return;
+            const data = await res.json();
+            const content = Buffer.from(data.content, "base64").toString("utf-8");
+
+            // Parse tags from frontmatter
+            const fmMatch = content.match(/^---\n([\s\S]*?)\n---/);
+            if (!fmMatch) return;
+            const fm = fmMatch[1];
+
+            function parseList(field: string): string[] {
+              const inline = fm.match(new RegExp(`^${field}:\\s*\\[([^\\]]*)\\]`, "m"));
+              if (inline) return inline[1].split(",").map((s) => s.trim().replace(/^['"]|['"]$/g, "")).filter(Boolean);
+              const block = fm.match(new RegExp(`^${field}:\\s*\\n((?:[ \\t]+-[^\\n]*\\n?)*)`, "m"));
+              if (block) return block[1].split("\n").map((l) => l.replace(/^[ \t]+-\s*/, "").trim().replace(/^['"]|['"]$/g, "")).filter(Boolean);
+              return [];
+            }
+
+            for (const tag of [...parseList("tags"), ...parseList("topic_areas").map((t) => `topic/${t}`), ...parseList("people").map((n) => `person/${n.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "")}`)]) {
+              if (tag.startsWith("person/")) people.add(tag);
+              else if (tag.startsWith("publisher/")) publishers.add(tag);
+              else if (tag.startsWith("org/")) orgs.add(tag);
+              else if (tag.startsWith("topic/")) topics.add(tag);
+              else if (PROMO_TYPE_ENUMS.has(tag)) promoTypes.add(tag);
+            }
+
+            const ctMatch = fm.match(/^content_type:\s*["']?([^\n"']+)["']?/m);
+            if (ctMatch && PROMO_TYPE_ENUMS.has(ctMatch[1].trim())) promoTypes.add(ctMatch[1].trim());
+          } catch { /* skip file */ }
+        })
+      );
     }
-  }
-
-  walk(BRAIN_DIR);
+  } catch { /* fall through to empty */ }
 
   return {
     people: [...people].sort(),
@@ -132,6 +98,66 @@ function scanVaultTags(): {
     topics: [...topics].sort(),
     promoTypes: [...promoTypes].sort(),
   };
+}
+
+/**
+ * Scan local vault filesystem (dev only).
+ */
+function scanVaultTagsLocal(): {
+  people: string[]; publishers: string[]; orgs: string[]; topics: string[]; promoTypes: string[];
+} {
+  const people = new Set<string>();
+  const publishers = new Set<string>();
+  const orgs = new Set<string>();
+  const topics = new Set<string>();
+  const promoTypes = new Set<string>();
+
+  const PROMO_TYPE_ENUMS = new Set([
+    "fe-live-webinar", "fe-vsl", "be-live-webinar", "be-vsl",
+    "mega-bundle-live-webinar", "mega-bundle-vsl", "external-competitor",
+  ]);
+
+  if (!fs.existsSync(BRAIN_DIR_LOCAL)) return { people: [], publishers: [], orgs: [], topics: [], promoTypes: [] };
+
+  function walk(dir: string) {
+    let entries: string[];
+    try { entries = fs.readdirSync(dir); } catch { return; }
+    for (const entry of entries) {
+      if (entry.startsWith(".")) continue;
+      const full = require("path").join(dir, entry);
+      try {
+        const stat = fs.statSync(full);
+        if (stat.isDirectory()) { walk(full); continue; }
+        if (!entry.endsWith(".md")) continue;
+        const content = fs.readFileSync(full, "utf-8");
+        const fmMatch = content.match(/^---\n([\s\S]*?)\n---/);
+        if (!fmMatch) continue;
+        const fm = fmMatch[1];
+
+        function parseList(field: string): string[] {
+          const inline = fm.match(new RegExp(`^${field}:\\s*\\[([^\\]]*)\\]`, "m"));
+          if (inline) return inline[1].split(",").map((s) => s.trim().replace(/^['"]|['"]$/g, "")).filter(Boolean);
+          const block = fm.match(new RegExp(`^${field}:\\s*\\n((?:[ \\t]+-[^\\n]*\\n?)*)`, "m"));
+          if (block) return block[1].split("\n").map((l) => l.replace(/^[ \t]+-\s*/, "").trim().replace(/^['"]|['"]$/g, "")).filter(Boolean);
+          return [];
+        }
+
+        for (const tag of [...parseList("tags"), ...parseList("topic_areas").map((t: string) => `topic/${t}`), ...parseList("people").map((n: string) => `person/${n.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "")}`)]) {
+          if (tag.startsWith("person/")) people.add(tag);
+          else if (tag.startsWith("publisher/")) publishers.add(tag);
+          else if (tag.startsWith("org/")) orgs.add(tag);
+          else if (tag.startsWith("topic/")) topics.add(tag);
+          else if (PROMO_TYPE_ENUMS.has(tag)) promoTypes.add(tag);
+        }
+
+        const ctMatch = fm.match(/^content_type:\s*["']?([^\n"']+)["']?/m);
+        if (ctMatch && PROMO_TYPE_ENUMS.has(ctMatch[1].trim())) promoTypes.add(ctMatch[1].trim());
+      } catch { continue; }
+    }
+  }
+
+  walk(BRAIN_DIR_LOCAL);
+  return { people: [...people].sort(), publishers: [...publishers].sort(), orgs: [...orgs].sort(), topics: [...topics].sort(), promoTypes: [...promoTypes].sort() };
 }
 
 const PROMPT = `You are tagging a financial promo note in an Obsidian vault. Use the vault's CURRENT tag vocabulary shown below.
@@ -181,7 +207,7 @@ Infer VSL vs live-webinar from the content if ambiguous.
 
 **orgTag**: For anything in the Agora universe use "org/agora". For Oxford Group specifically use "org/oxford-group". Empty string otherwise.
 
-**topicTags**: 1-3 topic tags capturing the investment theme. Use existing topic/ tags when they match. Create new ones as topic/slug. Examples: topic/options-trading, topic/ai-investing, topic/macro, topic/ipo, topic/commodities, topic/crypto, topic/income-investing, topic/retirement.
+**topicTags**: 1-3 topic tags capturing the investment theme. Use existing topic/ tags when they match. Create new ones as topic/slug.
 
 Return ONLY valid JSON:
 {
@@ -196,7 +222,12 @@ Return ONLY valid JSON:
 export async function POST(req: NextRequest) {
   const { filename, promoType, sections } = await req.json();
 
-  const vaultTags = scanVaultTags();
+  const token = getEnv("GITHUB_TOKEN");
+
+  // Use GitHub API on Railway, local filesystem in dev
+  const vaultTags = token
+    ? await scanVaultTagsViaAPI(token)
+    : scanVaultTagsLocal();
 
   const prompt = PROMPT
     .replace("{PEOPLE_TAGS}",     vaultTags.people.join("\n")      || "(none yet — create as person/firstname-lastname)")
@@ -233,7 +264,6 @@ export async function POST(req: NextRequest) {
   const orgTag         = (structured.orgTag as string)         ?? "";
   const topicTags      = (structured.topicTags as string[])    ?? [];
 
-  // Build tag list in logical order
   const tags: string[] = ["promo"];
   if (productCodeTag) tags.push(productCodeTag);
   for (const p of peopleTags) if (p) tags.push(p);
