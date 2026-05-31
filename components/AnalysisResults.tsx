@@ -117,7 +117,8 @@ export default function AnalysisResults({
   const [titleValue, setTitleValue] = useState("");
   const [localDisplayName, setLocalDisplayName] = useState<string | null>(displayName ?? null);
 
-  const shownTitle = localDisplayName ?? filename;
+  // Match the sidebar label format: displayName if set, else filename without extension
+  const shownTitle = localDisplayName ?? filename.replace(/\.[^.]+$/, "");
   const [effectivenessOverride, setEffectivenessOverride] = useState<string | null>(null);
 
   // Reset local state whenever the underlying review changes

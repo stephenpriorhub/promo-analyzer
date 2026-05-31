@@ -21,8 +21,12 @@ const NAVY_BG = "#f0f4fc";
 const NAVY_BORDER = "#c8d5f0";
 
 function liveScore(review: SavedReview): number | null {
-  // Re-extract from raw text so we always show the correct decimal value
-  // even for reviews saved before the decimal-regex fix
+  // Prefer calibrated score when training feedback has been applied
+  if (review.training?.calibratedEffectiveness) {
+    const m = review.training.calibratedEffectiveness.match(/(\d+(?:\.\d+)?)\s*\/\s*10/);
+    if (m) return parseFloat(m[1]);
+  }
+  // Fall back to original effectiveness text
   const raw = review.sections?.effectiveness ?? "";
   const m = raw.match(/(\d+(?:\.\d+)?)\s*\/\s*10/);
   if (m) return parseFloat(m[1]);
