@@ -1,8 +1,7 @@
 [build]
 builder = "NIXPACKS"
-buildCommand = "npm run build && cp -r public .next/standalone/public && cp -r .next/static .next/standalone/.next/static"
 
 [deploy]
-startCommand = "bash scripts/start.sh"
+startCommand = "npm start"
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 10
