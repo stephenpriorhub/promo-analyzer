@@ -24,5 +24,5 @@ else
   echo "[brain] BRAIN_GITHUB_REPO or GITHUB_TOKEN not set — brain features disabled"
 fi
 
-echo "[app] Starting Next.js on port ${PORT:-3000}..."
-exec node_modules/.bin/next start -p "${PORT:-3000}" -H 0.0.0.0
+echo "[app] Starting Next.js standalone on port ${PORT:-3000}..."
+exec node .next/standalone/server.js
