@@ -26,6 +26,7 @@ export interface TrainingData {
   myScore: number | null;          // analyst's personal assessment (lower weight)
   reasoning: string;
   lastUpdated: string;
+  calibratedEffectiveness?: string; // re-evaluated effectiveness after training feedback
 }
 
 export interface SavedReview {
@@ -204,16 +205,16 @@ export function getReviewById(id: string): SavedReview | null {
 
 export function updateReviewTraining(
   id: string,
-  training: TrainingData,
-  newEffectiveness?: string
+  training: TrainingData
 ): boolean {
   const reviews = readReviews();
   const idx = reviews.findIndex((r) => r.id === id);
   if (idx === -1) return false;
   reviews[idx].training = training;
-  if (newEffectiveness !== undefined) {
-    reviews[idx].sections.effectiveness = newEffectiveness;
-    const m = newEffectiveness.match(/(\d+(?:\.\d+)?)\s*\/\s*10/);
+  // Original sections.effectiveness is never overwritten — calibrated lives in training
+  // Update the sidebar score from calibrated if available
+  if (training.calibratedEffectiveness) {
+    const m = training.calibratedEffectiveness.match(/(\d+(?:\.\d+)?)\s*\/\s*10/);
     if (m) reviews[idx].effectivenessScore = parseFloat(m[1]);
   }
   writeReviews(reviews);

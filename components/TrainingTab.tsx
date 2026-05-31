@@ -107,8 +107,8 @@ export default function TrainingTab({
   const hasSomething = hasScore || promoType !== null || reasoning.trim().length > 0;
   const canSave = !!reviewId && hasSomething;
 
-  async function handleSave(newEffectiveness?: string) {
-    if (!reviewId || !hasScore) return;
+  async function handleSave(calibrated?: string) {
+    if (!reviewId || !canSave) return;
     setSaving(true);
     const training: TrainingData = {
       promoType,
@@ -116,15 +116,12 @@ export default function TrainingTab({
       myScore,
       reasoning: reasoning.trim(),
       lastUpdated: new Date().toISOString(),
+      calibratedEffectiveness: calibrated ?? initialTraining?.calibratedEffectiveness,
     };
     await fetch("/api/reviews", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        id: reviewId,
-        training,
-        effectiveness: newEffectiveness,
-      }),
+      body: JSON.stringify({ id: reviewId, training }),
     });
     setLastSaved(training.lastUpdated);
     setSaving(false);

@@ -26,6 +26,7 @@ interface Props {
   streaming?: boolean;
   reviewId?: string | null;
   displayName?: string | null;
+  calibratedEffectiveness?: string | null;
   initialTraining?: TrainingData;
   onScoreApplied?: () => void;
   onRename?: (newName: string) => void;
@@ -104,6 +105,7 @@ export default function AnalysisResults({
   streaming,
   reviewId,
   displayName,
+  calibratedEffectiveness,
   initialTraining,
   onScoreApplied,
   onRename,
@@ -120,10 +122,10 @@ export default function AnalysisResults({
 
   // Reset local state whenever the underlying review changes
   useEffect(() => {
-    setEffectivenessOverride(null);
+    setEffectivenessOverride(calibratedEffectiveness ?? null);
     setLocalDisplayName(displayName ?? null);
     setEditingTitle(false);
-  }, [reviewId, filename, displayName]);
+  }, [reviewId, filename, displayName, calibratedEffectiveness]);
 
   const effectivenessContent = effectivenessOverride ?? sections.effectiveness;
   const derivedEffectivenessScore = (() => {
@@ -178,10 +180,11 @@ export default function AnalysisResults({
       {brainOpen && (
         <BrainModal
           defaultTitle={defaultBrainTitle}
-          sections={{ ...sections, effectiveness: effectivenessContent }}
+          sections={sections}
           fkScore={fkScore}
           effectivenessScore={derivedEffectivenessScore}
           promoType={initialTraining?.promoType ?? null}
+          calibratedEffectiveness={effectivenessOverride}
           onClose={() => setBrainOpen(false)}
         />
       )}
@@ -294,7 +297,8 @@ export default function AnalysisResults({
           <OfferSection
             content={sections.offer}
             stockTease={sections.stockTease}
-            effectiveness={effectivenessContent}
+            effectiveness={sections.effectiveness}
+            calibratedEffectiveness={effectivenessOverride !== null ? effectivenessOverride : null}
           />
         )}
         {activeTab === "documents" && (

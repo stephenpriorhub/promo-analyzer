@@ -178,6 +178,8 @@ export default function Home() {
   const displayReviewId: string | null = activeJob?.reviewId ?? activeReview?.id ?? null;
   const displayInitialTraining: TrainingData | undefined = activeReview?.training ?? undefined;
   const displayNameProp: string | null = activeReview?.displayName ?? null;
+  const displayCalibratedEffectiveness: string | null =
+    activeReview?.training?.calibratedEffectiveness ?? null;
 
   const hasResults = view.type !== "upload";
   const inProgressJobs = jobs.filter((j) => j.streaming);
@@ -294,6 +296,7 @@ export default function Home() {
                 streaming={displayStreaming}
                 reviewId={displayReviewId}
                 displayName={displayNameProp}
+                calibratedEffectiveness={displayCalibratedEffectiveness}
                 initialTraining={displayInitialTraining}
                 onScoreApplied={() => setRefreshReviews((n) => n + 1)}
                 onRename={(newName) => {

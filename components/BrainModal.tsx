@@ -14,6 +14,7 @@ interface Props {
   fkScore: FKScore | null;
   effectivenessScore: number | null;
   promoType?: string | null;
+  calibratedEffectiveness?: string | null;
   onClose: () => void;
 }
 
@@ -41,7 +42,8 @@ function buildNote(
   tags: string,
   sections: AnalysisSections,
   fkScore: FKScore | null,
-  effectivenessScore: number | null
+  effectivenessScore: number | null,
+  calibratedEffectiveness?: string | null
 ): string {
   const today = new Date().toISOString().slice(0, 10);
   const tagList = tags
@@ -73,7 +75,15 @@ function buildNote(
   }
 
   if (sections.effectiveness) {
-    parts.push("## Effectiveness", sections.effectiveness, "");
+    parts.push(
+      calibratedEffectiveness ? "## Effectiveness (Original Analysis)" : "## Effectiveness",
+      sections.effectiveness,
+      ""
+    );
+  }
+
+  if (calibratedEffectiveness) {
+    parts.push("## Post-Training Feedback Analysis", calibratedEffectiveness, "");
   }
 
   if (sections.headline) {
@@ -105,6 +115,7 @@ export default function BrainModal({
   fkScore,
   effectivenessScore,
   promoType,
+  calibratedEffectiveness,
   onClose,
 }: Props) {
   const [title, setTitle] = useState(defaultTitle);
@@ -142,7 +153,7 @@ export default function BrainModal({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const noteContent = buildNote(title, tags, sections, fkScore, effectivenessScore);
+  const noteContent = buildNote(title, tags, sections, fkScore, effectivenessScore, calibratedEffectiveness);
 
   async function handleAdd() {
     setStatus("loading");

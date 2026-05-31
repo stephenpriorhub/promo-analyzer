@@ -35,7 +35,7 @@ export async function PATCH(req: NextRequest) {
   }
 
   if (training !== undefined) {
-    const ok = updateReviewTraining(id, training, effectiveness);
+    const ok = updateReviewTraining(id, training);
     if (!ok) return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 

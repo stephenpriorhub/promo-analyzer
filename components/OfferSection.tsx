@@ -4,6 +4,7 @@ interface Props {
   content: string;
   stockTease: string;
   effectiveness: string;
+  calibratedEffectiveness?: string | null;
 }
 
 const NAVY = "#012479";
@@ -23,7 +24,7 @@ function parseLine(line: string): { label: string; value: string } | null {
   return null;
 }
 
-export default function OfferSection({ content, stockTease, effectiveness }: Props) {
+export default function OfferSection({ content, stockTease, effectiveness, calibratedEffectiveness }: Props) {
   // Split offer content and extract the Big Idea line
   const lines = content.split("\n").filter((l) => l.trim());
   let bigIdea = "";
@@ -104,7 +105,7 @@ export default function OfferSection({ content, stockTease, effectiveness }: Pro
         </div>
       )}
 
-      {/* Effectiveness rationale */}
+      {/* Original effectiveness rationale */}
       {effectiveness && (
         <div className="bg-slate-50 border border-slate-200 rounded-lg p-4">
           <h3 className="font-semibold text-slate-700 mb-2 text-sm uppercase tracking-wide">
@@ -116,6 +117,25 @@ export default function OfferSection({ content, stockTease, effectiveness }: Pro
               .filter((l) => l.trim())
               .map((line, i) => (
                 <p key={i} className="text-sm text-slate-700 leading-relaxed">
+                  {renderMarkdown(line)}
+                </p>
+              ))}
+          </div>
+        </div>
+      )}
+
+      {/* Post-training recalibrated effectiveness */}
+      {calibratedEffectiveness && (
+        <div className="rounded-lg p-4 border-2" style={{ background: NAVY_BG, borderColor: NAVY_BORDER }}>
+          <h3 className="font-semibold mb-2 text-sm uppercase tracking-wide" style={{ color: NAVY }}>
+            Post-Training Feedback Analysis
+          </h3>
+          <div className="space-y-1">
+            {calibratedEffectiveness
+              .split("\n")
+              .filter((l) => l.trim())
+              .map((line, i) => (
+                <p key={i} className="text-sm leading-relaxed" style={{ color: NAVY }}>
                   {renderMarkdown(line)}
                 </p>
               ))}
