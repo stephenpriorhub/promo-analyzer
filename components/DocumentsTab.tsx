@@ -38,6 +38,7 @@ function fileIcon(filename: string): string {
 export default function DocumentsTab({ reviewId, filename }: Props) {
   const isPdf = filename.toLowerCase().endsWith(".pdf");
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [iframeError, setIframeError] = useState(false);
   const [sourceAvailable, setSourceAvailable] = useState<boolean | null>(null);
 
   // Supplemental files
@@ -130,13 +131,17 @@ export default function DocumentsTab({ reviewId, filename }: Props) {
 
           <div className="flex items-center gap-2">
             {isPdf && sourceAvailable && (
-              <button
-                onClick={() => setPreviewOpen((p) => !p)}
-                className="px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors"
-                style={{ borderColor: NAVY_BORDER, color: NAVY, background: "white" }}
-              >
-                {previewOpen ? "Hide Preview" : "Preview"}
-              </button>
+              <>
+                <a
+                  href={`/api/files/${reviewId}/source`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors"
+                  style={{ borderColor: NAVY_BORDER, color: NAVY, background: "white" }}
+                >
+                  👁 Preview
+                </a>
+              </>
             )}
             {sourceAvailable && reviewId ? (
               <a
@@ -175,17 +180,6 @@ export default function DocumentsTab({ reviewId, filename }: Props) {
           </div>
         </div>
 
-        {/* PDF inline preview */}
-        {previewOpen && reviewId && isPdf && (
-          <div className="rounded-lg overflow-hidden border" style={{ borderColor: NAVY_BORDER }}>
-            <iframe
-              src={`/api/files/${reviewId}/source`}
-              className="w-full"
-              style={{ height: "700px" }}
-              title={`Preview: ${filename}`}
-            />
-          </div>
-        )}
       </div>
 
       {/* ── Supplemental Files ───────────────────────── */}
