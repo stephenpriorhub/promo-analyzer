@@ -211,12 +211,7 @@ export function updateReviewTraining(
   const idx = reviews.findIndex((r) => r.id === id);
   if (idx === -1) return false;
   reviews[idx].training = training;
-  // Original sections.effectiveness is never overwritten — calibrated lives in training
-  // Update the sidebar score from calibrated if available
-  if (training.calibratedEffectiveness) {
-    const m = training.calibratedEffectiveness.match(/(\d+(?:\.\d+)?)\s*\/\s*10/);
-    if (m) reviews[idx].effectivenessScore = parseFloat(m[1]);
-  }
+  // effectivenessScore is never updated by training — sidebar always shows original
   writeReviews(reviews);
   return true;
 }

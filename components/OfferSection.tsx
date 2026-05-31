@@ -25,6 +25,9 @@ function parseLine(line: string): { label: string; value: string } | null {
 }
 
 export default function OfferSection({ content, stockTease, effectiveness, calibratedEffectiveness }: Props) {
+  // The active effectiveness is calibrated if applied, otherwise original
+  const activeEffectiveness = calibratedEffectiveness || effectiveness;
+
   // Split offer content and extract the Big Idea line
   const lines = content.split("\n").filter((l) => l.trim());
   let bigIdea = "";
@@ -47,13 +50,29 @@ export default function OfferSection({ content, stockTease, effectiveness, calib
           className="rounded-lg px-5 py-4 border"
           style={{ background: NAVY_BG, borderColor: NAVY_BORDER }}
         >
-          <p
-            className="text-xs font-bold uppercase tracking-wider mb-1.5"
-            style={{ color: NAVY }}
-          >
+          <p className="text-xs font-bold uppercase tracking-wider mb-1.5" style={{ color: NAVY }}>
             Big Idea
           </p>
           <p className="text-base text-gray-800 leading-relaxed">{bigIdea}</p>
+        </div>
+      )}
+
+      {/* Effectiveness — shown right after Big Idea */}
+      {activeEffectiveness && (
+        <div className="bg-slate-50 border border-slate-200 rounded-lg p-4">
+          <h3 className="font-semibold text-slate-700 mb-2 text-sm uppercase tracking-wide">
+            Effectiveness Rationale
+          </h3>
+          <div className="space-y-1">
+            {activeEffectiveness
+              .split("\n")
+              .filter((l) => l.trim())
+              .map((line, i) => (
+                <p key={i} className="text-sm text-slate-700 leading-relaxed">
+                  {renderMarkdown(line)}
+                </p>
+              ))}
+          </div>
         </div>
       )}
 
@@ -99,44 +118,6 @@ export default function OfferSection({ content, stockTease, effectiveness, calib
               .map((line, i) => (
                 <p key={i} className="text-sm text-amber-900">
                   {renderMarkdown(line.replace(/^[-•]\s*/, ""))}
-                </p>
-              ))}
-          </div>
-        </div>
-      )}
-
-      {/* Original effectiveness rationale */}
-      {effectiveness && (
-        <div className="bg-slate-50 border border-slate-200 rounded-lg p-4">
-          <h3 className="font-semibold text-slate-700 mb-2 text-sm uppercase tracking-wide">
-            Effectiveness Rationale
-          </h3>
-          <div className="space-y-1">
-            {effectiveness
-              .split("\n")
-              .filter((l) => l.trim())
-              .map((line, i) => (
-                <p key={i} className="text-sm text-slate-700 leading-relaxed">
-                  {renderMarkdown(line)}
-                </p>
-              ))}
-          </div>
-        </div>
-      )}
-
-      {/* Post-training recalibrated effectiveness */}
-      {calibratedEffectiveness && (
-        <div className="rounded-lg p-4 border-2" style={{ background: NAVY_BG, borderColor: NAVY_BORDER }}>
-          <h3 className="font-semibold mb-2 text-sm uppercase tracking-wide" style={{ color: NAVY }}>
-            Post-Training Feedback Analysis
-          </h3>
-          <div className="space-y-1">
-            {calibratedEffectiveness
-              .split("\n")
-              .filter((l) => l.trim())
-              .map((line, i) => (
-                <p key={i} className="text-sm leading-relaxed" style={{ color: NAVY }}>
-                  {renderMarkdown(line)}
                 </p>
               ))}
           </div>

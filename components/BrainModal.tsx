@@ -74,16 +74,9 @@ function buildNote(
     parts.push("## Big Idea", bigIdea, "");
   }
 
-  if (sections.effectiveness) {
-    parts.push(
-      calibratedEffectiveness ? "## Effectiveness (Original Analysis)" : "## Effectiveness",
-      sections.effectiveness,
-      ""
-    );
-  }
-
-  if (calibratedEffectiveness) {
-    parts.push("## Post-Training Feedback Analysis", calibratedEffectiveness, "");
+  const effectivenessToUse = calibratedEffectiveness || sections.effectiveness;
+  if (effectivenessToUse) {
+    parts.push("## Effectiveness", effectivenessToUse, "");
   }
 
   if (sections.headline) {
