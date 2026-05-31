@@ -129,7 +129,7 @@ export default function AnalysisResults({
       const res = await fetch("/api/export", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ filename, sections, fkScore }),
+        body: JSON.stringify({ filename, sections: { ...sections, effectiveness: effectivenessContent }, fkScore }),
       });
       if (!res.ok) throw new Error("Export failed");
       const blob = await res.blob();
@@ -154,9 +154,9 @@ export default function AnalysisResults({
       {brainOpen && (
         <BrainModal
           defaultTitle={defaultBrainTitle}
-          sections={sections}
+          sections={{ ...sections, effectiveness: effectivenessContent }}
           fkScore={fkScore}
-          effectivenessScore={effectivenessScore}
+          effectivenessScore={derivedEffectivenessScore}
           promoType={initialTraining?.promoType ?? null}
           onClose={() => setBrainOpen(false)}
         />
