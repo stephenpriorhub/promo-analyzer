@@ -27,7 +27,14 @@ export default function RootLayout({
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col">
+        <script
+          src="https://oxfordhub.app/hub-nav.js"
+          data-project-id="promo-analyzer"
+          async
+        />
+        {children}
+      </body>
     </html>
   );
 }
