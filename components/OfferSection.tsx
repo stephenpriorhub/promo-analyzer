@@ -25,8 +25,6 @@ function parseLine(line: string): { label: string; value: string } | null {
 }
 
 export default function OfferSection({ content, stockTease, effectiveness, calibratedEffectiveness }: Props) {
-  // The active effectiveness is calibrated if applied, otherwise original
-  const activeEffectiveness = calibratedEffectiveness || effectiveness;
 
   // Split offer content and extract the Big Idea line
   const lines = content.split("\n").filter((l) => l.trim());
@@ -57,24 +55,6 @@ export default function OfferSection({ content, stockTease, effectiveness, calib
         </div>
       )}
 
-      {/* Effectiveness — shown right after Big Idea */}
-      {activeEffectiveness && (
-        <div className="bg-slate-50 border border-slate-200 rounded-lg p-4">
-          <h3 className="font-semibold text-slate-700 mb-2 text-sm uppercase tracking-wide">
-            Effectiveness Rationale
-          </h3>
-          <div className="space-y-1">
-            {activeEffectiveness
-              .split("\n")
-              .filter((l) => l.trim())
-              .map((line, i) => (
-                <p key={i} className="text-sm text-slate-700 leading-relaxed">
-                  {renderMarkdown(line)}
-                </p>
-              ))}
-          </div>
-        </div>
-      )}
 
       {/* Offer details */}
       {offerLines.length > 0 && (
@@ -121,6 +101,45 @@ export default function OfferSection({ content, stockTease, effectiveness, calib
                 </p>
               ))}
           </div>
+        </div>
+      )}
+      {/* Effectiveness — original + training clarification in one box */}
+      {effectiveness && (
+        <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 space-y-3">
+          <h3 className="font-semibold text-slate-700 mb-1 text-sm uppercase tracking-wide">
+            Effectiveness Rationale
+          </h3>
+          <div className="space-y-1">
+            {effectiveness
+              .split("\n")
+              .filter((l) => l.trim())
+              .map((line, i) => (
+                <p key={i} className="text-sm text-slate-700 leading-relaxed">
+                  {renderMarkdown(line)}
+                </p>
+              ))}
+          </div>
+
+          {calibratedEffectiveness && (
+            <div className="pt-3 border-t border-slate-200 space-y-1">
+              {calibratedEffectiveness
+                .split("\n")
+                .filter((l) => l.trim())
+                .map((line, i) => {
+                  const isScoreLine = /^Score:/i.test(line.trim());
+                  const isRationaleLine = /^Rationale:/i.test(line.trim());
+                  const text = renderMarkdown(line.replace(/^Rationale:\s*/i, ""));
+                  if (isScoreLine) return null; // score shown in badge
+                  return (
+                    <p key={i} className="text-sm text-slate-700 leading-relaxed">
+                      {i === 0 || isRationaleLine ? (
+                        <><strong className="text-slate-900">Training Clarification:</strong>{" "}{text.replace(/^Score:[^.]*\.\s*/i, "")}</>
+                      ) : text}
+                    </p>
+                  );
+                })}
+            </div>
+          )}
         </div>
       )}
     </div>
