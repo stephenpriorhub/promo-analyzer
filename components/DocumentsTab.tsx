@@ -147,12 +147,30 @@ export default function DocumentsTab({ reviewId, filename }: Props) {
               >
                 ⬇ Download
               </a>
-            ) : sourceAvailable === false ? (
-              <span className="text-xs text-gray-400 italic">
-                {reviewId ? "File not stored (pre-feature upload)" : "Analysis in progress…"}
-              </span>
-            ) : (
+            ) : sourceAvailable === false && reviewId ? (
+              <label
+                className="px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer border transition-colors"
+                style={{ borderColor: NAVY_BORDER, color: NAVY, background: NAVY_BG }}
+              >
+                ＋ Upload Source File
+                <input
+                  type="file"
+                  className="hidden"
+                  accept=".pdf,.docx"
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    if (!file || !reviewId) return;
+                    const fd = new FormData();
+                    fd.append("file", file);
+                    const res = await fetch(`/api/files/${reviewId}/source`, { method: "POST", body: fd });
+                    if (res.ok) setSourceAvailable(true);
+                  }}
+                />
+              </label>
+            ) : sourceAvailable === null ? (
               <span className="text-xs text-gray-400">Checking…</span>
+            ) : (
+              <span className="text-xs text-gray-400 italic">Analysis in progress…</span>
             )}
           </div>
         </div>
