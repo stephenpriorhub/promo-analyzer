@@ -108,7 +108,8 @@ export default function TrainingTab({
   const canSave = !!reviewId && hasSomething;
 
   async function handleSave(calibrated?: string) {
-    if (!reviewId || !canSave) return;
+    // Always allow save when applying a calibration; otherwise require canSave
+    if (!reviewId || (!canSave && !calibrated)) return;
     setSaving(true);
     const training: TrainingData = {
       promoType,
