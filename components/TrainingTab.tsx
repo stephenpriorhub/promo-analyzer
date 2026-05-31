@@ -104,7 +104,8 @@ export default function TrainingTab({
   const [applied, setApplied] = useState(false);
 
   const hasScore = performanceScore !== null || myScore !== null;
-  const canSave = !!reviewId && hasScore;
+  const hasSomething = hasScore || promoType !== null || reasoning.trim().length > 0;
+  const canSave = !!reviewId && hasSomething;
 
   async function handleSave(newEffectiveness?: string) {
     if (!reviewId || !hasScore) return;

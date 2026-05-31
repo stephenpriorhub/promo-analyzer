@@ -6,6 +6,7 @@ import AnalysisResults from "@/components/AnalysisResults";
 import PastReviews from "@/components/PastReviews";
 import type { AnalysisSections, SavedReview, TrainingData } from "@/lib/reviews-store";
 import type { FKScore } from "@/lib/fk-score";
+import { readingEaseLabel } from "@/lib/fk-score";
 
 const NAVY = "#012479";
 
@@ -160,7 +161,11 @@ export default function Home() {
 
   const displayFkScore: FKScore | null = activeJob?.fkScore ??
     (activeReview?.fkReadingEase != null && activeReview?.fkGradeLevel != null
-      ? { readingEase: activeReview.fkReadingEase, gradeLevel: activeReview.fkGradeLevel, label: "" }
+      ? {
+          readingEase: activeReview.fkReadingEase,
+          gradeLevel: activeReview.fkGradeLevel,
+          label: readingEaseLabel(activeReview.fkReadingEase),
+        }
       : null);
 
   const displayStreaming = activeJob?.streaming ?? false;

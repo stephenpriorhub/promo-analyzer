@@ -21,7 +21,7 @@ function countSyllables(text: string): number {
   return words.reduce((sum, word) => sum + syllable(word), 0);
 }
 
-function readingEaseLabel(score: number): string {
+export function readingEaseLabel(score: number): string {
   if (score >= 90) return "Very Easy";
   if (score >= 80) return "Easy";
   if (score >= 70) return "Fairly Easy";
