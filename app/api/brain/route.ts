@@ -4,13 +4,25 @@ import path from "path";
 
 export const runtime = "nodejs";
 
-const BRAIN_DIR = "/Users/stephenprior/Documents/github/brain/Resources/Promo Analysis/Promo Analysis Tool";
+// Override via BRAIN_DIR env var for different environments.
+// If not set, defaults to the local Obsidian vault path.
+// On Railway or other servers this feature will be unavailable unless BRAIN_DIR is configured.
+const BRAIN_DIR = process.env.BRAIN_DIR
+  ?? "/Users/stephenprior/Documents/github/brain/Resources/Promo Analysis/Promo Analysis Tool";
 
 export async function POST(req: NextRequest) {
   const { title, content } = await req.json();
 
   if (!title || !content) {
     return NextResponse.json({ error: "title and content required" }, { status: 400 });
+  }
+
+  // Check if brain dir is accessible on this host
+  if (!fs.existsSync(BRAIN_DIR)) {
+    return NextResponse.json(
+      { error: "Brain vault not available on this server. Set BRAIN_DIR env var to enable." },
+      { status: 503 }
+    );
   }
 
   // Sanitize filename — strip characters illegal in macOS/NTFS filenames

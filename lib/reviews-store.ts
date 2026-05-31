@@ -2,7 +2,10 @@ import fs from "fs";
 import path from "path";
 import { v4 as uuidv4 } from "uuid";
 
-const DATA_DIR = path.join(process.cwd(), "data");
+// DATA_DIR can be overridden via env var — set to a Railway volume path in production
+const DATA_DIR = process.env.DATA_DIR
+  ? path.resolve(process.env.DATA_DIR)
+  : path.join(process.cwd(), "data");
 const REVIEWS_FILE = path.join(DATA_DIR, "reviews.json");
 export const FILES_DIR = path.join(DATA_DIR, "files");
 

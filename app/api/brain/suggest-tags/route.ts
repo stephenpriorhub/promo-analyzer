@@ -6,7 +6,9 @@ import { getEnv } from "@/lib/env";
 
 export const runtime = "nodejs";
 
-const BRAIN_DIR = "/Users/stephenprior/Documents/github/brain";
+// BRAIN_VAULT_DIR = root of the Obsidian vault (for tag scanning).
+// Falls back to local path; on Railway returns empty vocabulary if not set.
+const BRAIN_DIR = process.env.BRAIN_VAULT_DIR ?? "/Users/stephenprior/Documents/github/brain";
 
 /**
  * Parse all tags from a YAML frontmatter block.
@@ -84,6 +86,11 @@ function scanVaultTags(): {
     "fe-live-webinar", "fe-vsl", "be-live-webinar", "be-vsl",
     "mega-bundle-live-webinar", "mega-bundle-vsl", "external-competitor",
   ]);
+
+  // If vault isn't mounted on this host, return empty vocabulary
+  if (!fs.existsSync(BRAIN_DIR)) {
+    return { people: [], publishers: [], orgs: [], topics: [], promoTypes: [] };
+  }
 
   function walk(dir: string) {
     let entries: string[];
