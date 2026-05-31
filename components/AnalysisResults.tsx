@@ -25,8 +25,10 @@ interface Props {
   effectivenessScore: number | null;
   streaming?: boolean;
   reviewId?: string | null;
+  displayName?: string | null;
   initialTraining?: TrainingData;
   onScoreApplied?: () => void;
+  onRename?: () => void;
 }
 
 const TABS = [
@@ -101,12 +103,19 @@ export default function AnalysisResults({
   effectivenessScore,
   streaming,
   reviewId,
+  displayName,
   initialTraining,
   onScoreApplied,
+  onRename,
 }: Props) {
   const [activeTab, setActiveTab] = useState<TabKey>("offer");
   const [exporting, setExporting] = useState(false);
   const [brainOpen, setBrainOpen] = useState(false);
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [titleValue, setTitleValue] = useState("");
+  const [localDisplayName, setLocalDisplayName] = useState<string | null>(displayName ?? null);
+
+  const shownTitle = localDisplayName ?? filename;
   const [effectivenessOverride, setEffectivenessOverride] = useState<string | null>(null);
 
   // Reset local overrides whenever the underlying review changes
@@ -147,7 +156,20 @@ export default function AnalysisResults({
     }
   }
 
-  const defaultBrainTitle = filename.replace(/\.[^.]+$/, "");
+  async function commitTitleRename() {
+    const name = titleValue.trim();
+    setEditingTitle(false);
+    if (!name || !reviewId) return;
+    setLocalDisplayName(name);
+    await fetch("/api/reviews", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: reviewId, displayName: name }),
+    });
+    onRename?.();
+  }
+
+  const defaultBrainTitle = (localDisplayName ?? filename).replace(/\.[^.]+$/, "");
 
   return (
     <div className="flex flex-col gap-4">
@@ -163,7 +185,33 @@ export default function AnalysisResults({
       )}
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
-          <h2 className="text-lg font-bold text-gray-900 truncate">{filename}</h2>
+          {editingTitle ? (
+            <input
+              autoFocus
+              value={titleValue}
+              onChange={(e) => setTitleValue(e.target.value)}
+              onBlur={commitTitleRename}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") commitTitleRename();
+                if (e.key === "Escape") setEditingTitle(false);
+              }}
+              className="text-lg font-bold text-gray-900 bg-transparent border-b-2 outline-none w-full max-w-md"
+              style={{ borderColor: NAVY }}
+            />
+          ) : (
+            <div className="flex items-center gap-2 group">
+              <h2 className="text-lg font-bold text-gray-900 truncate">{shownTitle}</h2>
+              {reviewId && !streaming && (
+                <button
+                  onClick={() => { setTitleValue(localDisplayName ?? filename.replace(/\.[^.]+$/, "")); setEditingTitle(true); }}
+                  className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-blue-500 transition-all text-sm"
+                  title="Rename"
+                >
+                  ✏
+                </button>
+              )}
+            </div>
+          )}
           <ScoreBadges fkScore={fkScore} effectivenessScore={derivedEffectivenessScore} />
         </div>
         {!streaming && (
