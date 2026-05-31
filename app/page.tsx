@@ -291,7 +291,16 @@ export default function Home() {
                 displayName={displayNameProp}
                 initialTraining={displayInitialTraining}
                 onScoreApplied={() => setRefreshReviews((n) => n + 1)}
-                onRename={() => setRefreshReviews((n) => n + 1)}
+                onRename={(newName) => {
+                  // Immediately update the active review's displayName in local state
+                  setView((prev) =>
+                    prev.type === "review"
+                      ? { ...prev, data: { ...prev.data, displayName: newName } }
+                      : prev
+                  );
+                  // Also refresh the sidebar list
+                  setRefreshReviews((n) => n + 1);
+                }}
               />
             </div>
           )}

@@ -28,7 +28,7 @@ interface Props {
   displayName?: string | null;
   initialTraining?: TrainingData;
   onScoreApplied?: () => void;
-  onRename?: () => void;
+  onRename?: (newName: string) => void;
 }
 
 const TABS = [
@@ -118,10 +118,12 @@ export default function AnalysisResults({
   const shownTitle = localDisplayName ?? filename;
   const [effectivenessOverride, setEffectivenessOverride] = useState<string | null>(null);
 
-  // Reset local overrides whenever the underlying review changes
+  // Reset local state whenever the underlying review changes
   useEffect(() => {
     setEffectivenessOverride(null);
-  }, [reviewId, filename]);
+    setLocalDisplayName(displayName ?? null);
+    setEditingTitle(false);
+  }, [reviewId, filename, displayName]);
 
   const effectivenessContent = effectivenessOverride ?? sections.effectiveness;
   const derivedEffectivenessScore = (() => {
@@ -166,7 +168,7 @@ export default function AnalysisResults({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id: reviewId, displayName: name }),
     });
-    onRename?.();
+    onRename?.(name);
   }
 
   const defaultBrainTitle = (localDisplayName ?? filename).replace(/\.[^.]+$/, "");
