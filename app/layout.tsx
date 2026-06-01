@@ -14,11 +14,12 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   return (
     <html lang="en" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}>
       <head>
-        {/* Hide page immediately — hub-nav.js reveals it after auth check */}
+        {/* Hide page immediately at CSS level before any JS runs */}
         <style>{`html { visibility: hidden; }`}</style>
-        <script src="https://oxfordhub.app/hub-nav.js" data-project-id="promo-analyzer" />
       </head>
       <body className="min-h-full flex flex-col">
+        {/* defer ensures document.body exists when script runs */}
+        <script defer src="https://oxfordhub.app/hub-nav.js" data-project-id="promo-analyzer" />
         {children}
       </body>
     </html>
