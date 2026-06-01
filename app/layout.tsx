@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Script from "next/script";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
@@ -13,14 +14,15 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}>
-      <head>
-        {/* Hide page immediately at CSS level before any JS runs */}
-        <style>{`html { visibility: hidden; }`}</style>
-      </head>
       <body className="min-h-full flex flex-col">
-        {/* defer ensures document.body exists when script runs */}
-        <script defer src="https://oxfordhub.app/hub-nav.js" data-project-id="promo-analyzer" />
         {children}
+        {/* afterInteractive: runs after hydration, document.body exists, page stays hidden by globals.css until hub-nav.js reveals it */}
+        <Script
+          src="https://oxfordhub.app/hub-nav.js"
+          data-project-id="promo-analyzer"
+          strategy="afterInteractive"
+          id="hub-nav"
+        />
       </body>
     </html>
   );
