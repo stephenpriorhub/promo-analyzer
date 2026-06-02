@@ -12,7 +12,9 @@ const NAVY_BG = "#f0f4fc";
 const NAVY_BORDER = "#c8d5f0";
 
 function renderMarkdown(text: string): string {
-  return text.replace(/\*\*([^*]+)\*\*/g, "$1");
+  return text
+    .replace(/\*\*([^*]+)\*\*/g, "$1")  // strip **bold**
+    .replace(/\*([^*]+)\*/g, "$1");      // strip *italic*
 }
 
 function parseLine(line: string): { label: string; value: string } | null {
@@ -20,9 +22,11 @@ function parseLine(line: string): { label: string; value: string } | null {
   const colonIdx = stripped.indexOf(":");
   if (colonIdx !== -1 && colonIdx < 40) {
     const value = stripped.slice(colonIdx + 1).trim();
-    // Only treat as key:value if there's actual content after the colon
-    if (!value) return null;
-    return { label: stripped.slice(0, colonIdx).trim(), value };
+    if (!value) return null; // No value — render as plain text
+    const label = stripped.slice(0, colonIdx).trim();
+    // Don't treat as key:value if the "label" contains parentheses (e.g. "Free SpaceX IPO play (ticker")
+    if (label.includes("(") || label.includes(")")) return null;
+    return { label, value };
   }
   return null;
 }
@@ -79,9 +83,12 @@ export default function OfferSection({ content, stockTease, effectiveness, calib
                 );
               }
               return (
-                <p key={i} className="text-sm text-gray-700">
-                  {renderMarkdown(line.replace(/^[-•]\s*/, ""))}
-                </p>
+                <div key={i} className="flex gap-2 text-sm">
+                  <span className="w-40 shrink-0" />
+                  <span className="text-gray-800">
+                    {renderMarkdown(line.replace(/^[-•*]\s*/, ""))}
+                  </span>
+                </div>
               );
             })}
           </div>
