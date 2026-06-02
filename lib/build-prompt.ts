@@ -126,11 +126,12 @@ Example:
 [OFFER]
 Bullet-point summary:
 - **Big Idea**: (1-2 sentences — the single overarching copy concept driving this promo; what makes a skeptical 60-year-old want to keep reading)
+- **Publisher**: (the company or brand running this promotion — infer from branding, legal disclaimers, URLs, or copy style. Examples: InvestorPlace, Paradigm Press, Stansberry Research, Oxford Group / Monument Traders Alliance, Banyan Hill, Legacy Research, Porter & Co)
 - **Product name**:
 - **What it is** (newsletter, service, software, etc.):
 - **Price(s)**:
 - **Payment options** (one-time, monthly, annual, etc.):
-- **Bonuses** (list each):
+- **Bonuses** (list each report title only — no descriptions, one per line preceded by a dash):
 - **Guarantee**:
 - **Any urgency/scarcity elements**:
 [/OFFER]

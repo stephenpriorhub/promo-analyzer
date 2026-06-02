@@ -19,7 +19,10 @@ function parseLine(line: string): { label: string; value: string } | null {
   const stripped = renderMarkdown(line.replace(/^[-•]\s*/, ""));
   const colonIdx = stripped.indexOf(":");
   if (colonIdx !== -1 && colonIdx < 40) {
-    return { label: stripped.slice(0, colonIdx).trim(), value: stripped.slice(colonIdx + 1).trim() };
+    const value = stripped.slice(colonIdx + 1).trim();
+    // Only treat as key:value if there's actual content after the colon
+    if (!value) return null;
+    return { label: stripped.slice(0, colonIdx).trim(), value };
   }
   return null;
 }
