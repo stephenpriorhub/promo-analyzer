@@ -31,6 +31,112 @@ function parseLine(line: string): { label: string; value: string } | null {
   return null;
 }
 
+// Dimension line pattern: "1. Label: X/10 — rationale text"
+const DIMENSION_RE = /^\d+\.\s+(.+?):\s*(\d+(?:\.\d+)?)\s*\/\s*10\s*[—–-]\s*(.+)$/;
+
+function dimensionColor(score: number): { bar: string; text: string } {
+  if (score >= 8) return { bar: "#22c55e", text: "#166534" };
+  if (score >= 6) return { bar: "#eab308", text: "#854d0e" };
+  return { bar: "#ef4444", text: "#991b1b" };
+}
+
+function EffectivenessBlock({
+  effectiveness,
+  calibratedEffectiveness,
+}: {
+  effectiveness: string;
+  calibratedEffectiveness: string | null;
+}) {
+  const activeContent = calibratedEffectiveness ?? effectiveness;
+  const lines = activeContent.split("\n").filter((l) => l.trim());
+
+  const dimensions: { label: string; score: number; rationale: string }[] = [];
+  const otherLines: { text: string; isScore: boolean; isRationale: boolean }[] = [];
+
+  for (const line of lines) {
+    const dimMatch = line.match(DIMENSION_RE);
+    if (dimMatch) {
+      dimensions.push({
+        label: dimMatch[1].trim(),
+        score: parseFloat(dimMatch[2]),
+        rationale: dimMatch[3].trim(),
+      });
+    } else {
+      const trimmed = line.trim();
+      const isScore = /^Score:\s*\d/i.test(trimmed);
+      const isRationale = /^Rationale:/i.test(trimmed);
+      otherLines.push({ text: trimmed, isScore, isRationale });
+    }
+  }
+
+  // Find final score from lines
+  const scoreLine = otherLines.find((l) => l.isScore);
+  const finalScore = scoreLine
+    ? parseFloat(scoreLine.text.match(/(\d+(?:\.\d+)?)/)?.[1] ?? "0")
+    : null;
+
+  const rationale = otherLines
+    .filter((l) => !l.isScore)
+    .map((l) => (l.isRationale ? l.text.replace(/^Rationale:\s*/i, "") : l.text))
+    .join(" ")
+    .trim();
+
+  return (
+    <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 space-y-4">
+      <div className="flex items-center justify-between">
+        <h3 className="font-semibold text-slate-700 text-sm uppercase tracking-wide">
+          Conversion Prediction
+        </h3>
+        {finalScore !== null && (
+          <span
+            className="text-2xl font-bold tabular-nums"
+            style={{ color: dimensionColor(finalScore).text }}
+          >
+            {finalScore}/10
+          </span>
+        )}
+      </div>
+
+      {dimensions.length > 0 && (
+        <div className="space-y-2">
+          {dimensions.map((d, i) => {
+            const { bar, text } = dimensionColor(d.score);
+            return (
+              <div key={i}>
+                <div className="flex items-center justify-between mb-0.5">
+                  <span className="text-xs font-semibold text-slate-600">{d.label}</span>
+                  <span className="text-xs font-bold tabular-nums" style={{ color: text }}>
+                    {d.score}/10
+                  </span>
+                </div>
+                <div className="h-1.5 rounded-full bg-slate-200 overflow-hidden mb-1">
+                  <div
+                    className="h-full rounded-full transition-all duration-500"
+                    style={{ width: `${(d.score / 10) * 100}%`, background: bar }}
+                  />
+                </div>
+                <p className="text-xs text-slate-500 leading-relaxed">{d.rationale}</p>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {rationale && (
+        <p className="text-sm text-slate-700 leading-relaxed border-t border-slate-200 pt-3">
+          {rationale}
+        </p>
+      )}
+
+      {calibratedEffectiveness && (
+        <p className="text-xs text-slate-400 border-t border-slate-200 pt-2">
+          Score updated with publisher training data
+        </p>
+      )}
+    </div>
+  );
+}
+
 export default function OfferSection({ content, stockTease, effectiveness, calibratedEffectiveness }: Props) {
 
   // Split offer content and extract the Big Idea line
@@ -113,44 +219,12 @@ export default function OfferSection({ content, stockTease, effectiveness, calib
           </div>
         </div>
       )}
-      {/* Effectiveness — original + training clarification in one box */}
+      {/* Effectiveness — conversion prediction score */}
       {effectiveness && (
-        <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 space-y-3">
-          <h3 className="font-semibold text-slate-700 mb-1 text-sm uppercase tracking-wide">
-            Effectiveness Rationale
-          </h3>
-          <div className="space-y-1">
-            {effectiveness
-              .split("\n")
-              .filter((l) => l.trim())
-              .map((line, i) => (
-                <p key={i} className="text-sm text-slate-700 leading-relaxed">
-                  {renderMarkdown(line)}
-                </p>
-              ))}
-          </div>
-
-          {calibratedEffectiveness && (
-            <div className="pt-3 border-t border-slate-200 space-y-1">
-              {calibratedEffectiveness
-                .split("\n")
-                .filter((l) => l.trim())
-                .map((line, i) => {
-                  const isScoreLine = /^Score:/i.test(line.trim());
-                  const isRationaleLine = /^Rationale:/i.test(line.trim());
-                  const text = renderMarkdown(line.replace(/^Rationale:\s*/i, ""));
-                  if (isScoreLine) return null; // score shown in badge
-                  return (
-                    <p key={i} className="text-sm text-slate-700 leading-relaxed">
-                      {i === 0 || isRationaleLine ? (
-                        <><strong className="text-slate-900">Training Clarification:</strong>{" "}{text.replace(/^Score:[^.]*\.\s*/i, "")}</>
-                      ) : text}
-                    </p>
-                  );
-                })}
-            </div>
-          )}
-        </div>
+        <EffectivenessBlock
+          effectiveness={effectiveness}
+          calibratedEffectiveness={calibratedEffectiveness ?? null}
+        />
       )}
     </div>
   );

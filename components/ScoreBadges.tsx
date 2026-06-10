@@ -38,7 +38,7 @@ export default function ScoreBadges({ fkScore, effectivenessScore }: Props) {
           className="flex items-center gap-2 px-4 py-2 rounded-lg border font-medium"
           style={effectivenessStyle(effectivenessScore)}
         >
-          <span className="text-sm">Effectiveness</span>
+          <span className="text-sm">Conversion Score</span>
           <span className="font-bold text-lg">{effectivenessScore}/10</span>
         </div>
       )}

@@ -146,35 +146,77 @@ If there is no stock tease, write: NONE
 [/STOCK_TEASE]
 
 [EFFECTIVENESS]
+## Scoring Philosophy
+Your job here is NOT to grade framework compliance. Your job is to answer one question: **How likely is this promo to convert and generate revenue with the target audience?**
+
+A promo can break every copywriting rule and still crush it. A promo can be technically perfect and still flop. Score what you believe would actually happen in the market — not what a copywriting textbook would say.
+
+Think like a jaded, cynical direct-response buyer who has seen a thousand of these. Would a skeptical 60-year-old who gets 10 financial emails a day actually stop, read this, and pull out their credit card? That is the only question that matters.
+
+## The 8 Conversion Dimensions
+Score each dimension 1–10, then provide a one-line rationale in the format: "Scores X because [specific reason]." Do not write "Loses X points because it doesn't follow rule Y." Write what IS there and how well it works.
+
+**1. Hook Strength** (score /10)
+Does the opening grab attention hard enough to stop a distracted reader? Would someone who almost closed the tab keep reading? High-scoring hooks create immediate, specific curiosity or trigger a strong emotion within the first few sentences.
+
+**2. Believability** (score /10)
+Is the core claim believable enough for a skeptical 60-year-old to act on — even if it's bold? This is about credibility scaffolding: named experts, specific numbers, third-party references, track record, mechanism explanation. Bold claims paired with any supporting context score high. Completely naked claims with zero grounding score low. Do NOT penalize for large gain figures that are grounded; large grounded gains are a positive signal, not a negative one.
+
+**3. Specificity** (score /10)
+Concrete details sell. Specific numbers, dates, names, tickers, historical events, named companies. Vague promises ("great opportunity," "huge gains") score low. Specific claims ("SpaceX IPO on March 26," "ARKVX is the ticker") score high. Specificity is the single strongest proxy for credibility in financial copy.
+
+**4. Emotional Pull** (score /10)
+Does the promo connect with the reader's real emotions — fear of missing out, fear of loss, desire for security, desire to be the smart one in the room, anger at a villain, hope for the future? Is the emotion earned through story and evidence, or does it feel manufactured? Sustained emotional engagement throughout the letter scores highest.
+
+**5. Momentum** (score /10)
+Does the letter build? Does each section make you want to read the next one? High-momentum promos use open loops, reveals, escalating proof, and forward-leaning transitions. Low-momentum promos repeat themselves, lose the thread, or have long passages that don't advance the sale.
+
+**6. Offer Clarity** (score /10)
+At the end, does the reader know exactly what they're getting, what they're paying, and why the price makes sense? The offer should feel like a no-brainer relative to the value described. Confusion, ambiguity, or a murky value stack suppresses conversion even when the lead is strong.
+
+**7. Call to Action / Urgency** (score /10)
+Does the reader know exactly what to do next and feel motivated to do it now rather than later? This does NOT require a countdown timer — genuine urgency can come from a time-specific catalyst (a predicted event, an announcement window, a market condition) or from simple forward momentum. Score high when the reader understands what they'll miss if they don't act. Score low only if there is zero forward pull whatsoever.
+
+**8. Audience Fit** (score /10)
+Is this promo genuinely right for the financial newsletter buyer persona — conservative males 50–70 focused on security, income, and not getting left behind? Does it speak their language, respect their intelligence, and address their actual fears and desires? A technically excellent promo aimed at the wrong person scores low here.
+
+## Scoring Calibration
+
+**10/10**: Dominates on all or nearly all dimensions. This promo would be a proven control or clear runaway hit. Give a 10 when you would genuinely bet money on it outperforming the field. 10s are rare but real — they exist.
+
+**8–9/10**: Excellent. Strong on the dimensions that drive the most conversion (hook, believability, emotional pull). One or two dimensions are merely good rather than exceptional. Would be a strong performer and likely a control candidate.
+
+**6–7/10**: Solid. Gets the job done. The core argument works for the audience, but one or two meaningful gaps limit its ceiling. Will convert, but won't be a runaway.
+
+**4–5/10**: Average. Has the basics but lacks the hook, specificity, or emotional depth to outperform. Needs meaningful rework to become a control.
+
+**2–3/10**: Weak. Significant problems in the dimensions that matter most. Structural issues, credibility gaps, or poor audience fit will visibly hurt conversion.
+
+**1/10**: Fundamentally broken — wrong audience, no mechanism, no credibility. Unlikely to convert meaningfully.
+
+## Rules for This Section
+
+- Score each of the 8 dimensions separately before arriving at the final score. The final score is your holistic conversion prediction — it does not have to be a mathematical average.
+- Every dimension rationale must be positive: "Scores X because the copy does Y" — never "Loses X points because it's missing Y."
+- The final score rationale (2–3 sentences) should answer: would you bet on this promo? Name what makes you confident or uncertain.
+- Dimensions that are irrelevant or neutral for a given promo should score 7 (baseline competent) — do not manufacture a gap where there isn't one.
+- Big idea / product alignment is embedded in Believability and Audience Fit. If the big idea sets up an expectation the product cannot deliver, that kills Believability and Audience Fit — do not treat it as a separate deduction.
+- Testimonials, veiling tactics, length, and non-hard urgency are NOT scoring penalties unless they actively harm the reader's experience. Their absence is never a deduction.
+
+## Output Format for This Section
+Dimension scores (label, score /10, one-line rationale):
+1. Hook Strength: X/10 — [one line]
+2. Believability: X/10 — [one line]
+3. Specificity: X/10 — [one line]
+4. Emotional Pull: X/10 — [one line]
+5. Momentum: X/10 — [one line]
+6. Offer Clarity: X/10 — [one line]
+7. Call to Action / Urgency: X/10 — [one line]
+8. Audience Fit: X/10 — [one line]
+
 Score: X/10
 
-Scoring calibration — use the full range. This publisher's promos are professionally produced and tested against a real audience of conservative males 50–70. Historical data shows their best-converting promos (top 10% in revenue) are strong on lead, mechanism, and emotional resonance even when they miss some framework elements. Score to reflect real-world conversion potential, not framework compliance alone.
-
-- **9–10**: Exceptional. Would be a standout performer. Powerful lead, crystal-clear mechanism, deep emotional resonance with the target audience, strong close. Very few weaknesses.
-- **7–8**: Strong. Above-average conversion potential. The core argument lands and the audience will believe it. Some gaps but nothing that seriously hurts performance.
-- **5–6**: Average. Has the fundamentals but lacks the hook, specificity, or emotional pull to outperform. Will convert but won't be a control.
-- **3–4**: Weak. Significant structural or credibility problems that will visibly hurt conversion with this audience.
-- **1–2**: Poor. Wrong audience, no mechanism, no credibility — fundamental issues.
-
-Weight these factors most heavily: (1) strength of the lead/hook, (2) believability of the mechanism for a skeptical 60-year-old, (3) emotional resonance — does it make them feel understood?, (4) offer clarity and risk removal. Do not over-penalize for missing framework elements if the promo compensates with strong emotional momentum.
-
-Testimonial calibration: Testimonials are the weakest lever in financial copy and should carry minimal weight in this score. Missing or thin testimonials are not a meaningful negative. Many high-converting front-end promos run with no testimonials at all — the mechanism, the lead, and the offer do the real work.
-
-Big idea / product alignment calibration: The big idea and the actual product must be coherent — this is one of the most important conversion factors. If the big idea creates a specific expectation (e.g. a mysterious new investment category, a passive opportunity, a secret asset) but the product is something fundamentally different (e.g. an active trading system requiring signals, alerts, and ongoing decisions), readers who buy in on the idea feel misled when they encounter the reality. This disconnect suppresses conversion and generates refunds. A great big idea applied to the wrong product is not a strength — it is a liability. When evaluating a promo, assess whether the big idea and the product are genuinely aligned: does the product actually deliver what the concept promises? If not, score this as a significant weakness regardless of how compelling the copy is on its surface.
-
-Important calibration on return claims: Large percentage gains (10,000%+, 61,000%, etc.) are standard in this industry and are NOT a meaningful drag on effectiveness by themselves. They become a problem only when they are completely unexplained — no named stock, no event, no mechanism. If the promo provides any supporting context (a stock name, a historical event, a brief story), treat those claims as a net positive (specificity and credibility) rather than a liability. Do not penalize a promo for bold claims that are grounded.
-
-Length calibration: Long-form copy (30–60+ pages) is NOT a negative for this format and audience. Conservative males 50–70 who engage with financial promos self-select into long reads — length signals thoroughness and builds the case. Do not penalize copy for being long. Only flag length as a problem if there are extended passages with zero conversion purpose (no new proof, no new objection handled, no emotional momentum). A well-constructed 50-page promo should not score lower than a tight 15-page promo if the engagement, mechanism, and offer are stronger.
-
-Urgency calibration: Hard deadlines and scarcity are one tool, not a requirement. Many top-performing financial front-ends run with soft or implied urgency ("this window won't stay open," "early movers benefit most") or no explicit deadline at all. Do not meaningfully penalize a promo for lacking a countdown timer or hard expiry. If the offer and mechanism are compelling, conversion happens. Only flag urgency as a real gap if the promo has no sense of forward momentum whatsoever.
-
-Transparency calibration: When a copywriter proactively clarifies or qualifies a bold claim mid-letter (e.g. "this isn't literally a trust fund, but here's why we call it that"), treat this as a credibility-building move, not a weakness. Sophisticated readers trust copy more when the writer acknowledges nuance before they catch it themselves. Do not score this as a "credibility wobble."
-
-Veiling and mystery mechanics calibration: Withholding a name (a stock ticker, a billionaire's identity, a fund name) or framing access through a special "code" or "system" are standard, proven tactics in financial copy. The target reader — a conservative 60-year-old who is NOT a financial professional — does not know the inner mechanics of mutual funds, ETFs, or how publicly accessible instruments work. Veiling can be noted as a weakness in the CUB if the execution is thin, but it should carry minimal weight in the effectiveness score. Even a somewhat clunky veil does not meaningfully suppress conversion — do not let it be a deciding factor between score bands.
-
-Expert prediction calibration: When a promo makes time-specific predictions (a date, a price target, a market window) framed as the analyst's or expert's forecast — even if not confirmed by a third party — treat these as legitimate urgency drivers based on expert analysis. Do not flag these as "manufactured urgency" or a credibility risk. Readers understand they are reading an analyst's prediction. Only flag urgency as problematic if it is explicitly fabricated (e.g. a countdown timer that resets, or a deadline the copy itself contradicts).
-
-Rationale: 2–3 sentences explaining the score. Be specific — name what's working and what's not.
+Rationale: 2–3 sentences. Answer: would you bet on this promo? Be specific about what makes it work or what limits its ceiling.
 [/EFFECTIVENESS]`;
 
 export const CUB_SYSTEM_PROMPT = `You are an expert financial copywriter performing a CUB (Confusing, Unbelievable, Boring) review of a promotional sales letter.
