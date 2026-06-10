@@ -137,6 +137,41 @@ export default function Home() {
     setView({ type: "review", data: review });
   }, []);
 
+  const handleReanalyzed = useCallback((newSections: AnalysisSections, newFkScore: FKScore | null) => {
+    setView((prev) => {
+      if (prev.type === "review") {
+        return {
+          ...prev,
+          data: {
+            ...prev.data,
+            sections: newSections,
+            fkReadingEase: newFkScore?.readingEase ?? prev.data.fkReadingEase,
+            fkGradeLevel: newFkScore?.gradeLevel ?? prev.data.fkGradeLevel,
+            // Clear calibrated effectiveness — old training data was for old scoring
+            training: prev.data.training
+              ? { ...prev.data.training, calibratedEffectiveness: undefined }
+              : undefined,
+          },
+        };
+      }
+      return prev;
+    });
+    // For job views, update the job's sections directly
+    setJobs((prev) =>
+      prev.map((j) => {
+        if (view.type === "job" && j.id === view.id) {
+          return {
+            ...j,
+            sections: newSections,
+            fkScore: newFkScore ?? j.fkScore,
+          };
+        }
+        return j;
+      })
+    );
+    setRefreshReviews((n) => n + 1);
+  }, [view]);
+
   const handleSelectJob = useCallback((id: string) => {
     setView({ type: "job", id });
   }, []);
@@ -299,6 +334,7 @@ export default function Home() {
                 calibratedEffectiveness={displayCalibratedEffectiveness}
                 initialTraining={displayInitialTraining}
                 onScoreApplied={() => setRefreshReviews((n) => n + 1)}
+                onReanalyzed={handleReanalyzed}
                 onRename={(newName) => {
                   // Immediately update the active review's displayName in local state
                   setView((prev) =>

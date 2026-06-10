@@ -30,6 +30,7 @@ interface Props {
   initialTraining?: TrainingData;
   onScoreApplied?: () => void;
   onRename?: (newName: string) => void;
+  onReanalyzed?: (sections: AnalysisSections, fkScore: FKScore | null) => void;
 }
 
 const TABS = [
@@ -109,6 +110,7 @@ export default function AnalysisResults({
   initialTraining,
   onScoreApplied,
   onRename,
+  onReanalyzed,
 }: Props) {
   const [activeTab, setActiveTab] = useState<TabKey>("offer");
   const [exporting, setExporting] = useState(false);
@@ -116,6 +118,8 @@ export default function AnalysisResults({
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleValue, setTitleValue] = useState("");
   const [localDisplayName, setLocalDisplayName] = useState<string | null>(displayName ?? null);
+  const [reanalyzing, setReanalyzing] = useState(false);
+  const [reanalyzeError, setReanalyzeError] = useState<string | null>(null);
 
   // Match the sidebar label format: displayName if set, else filename without extension
   const shownTitle = localDisplayName ?? filename.replace(/\.[^.]+$/, "");
@@ -174,6 +178,68 @@ export default function AnalysisResults({
     onRename?.(name);
   }
 
+  async function handleReanalyze() {
+    if (!reviewId) return;
+    setReanalyzing(true);
+    setReanalyzeError(null);
+    try {
+      const res = await fetch("/api/reanalyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reviewId }),
+      });
+      if (!res.ok || !res.body) {
+        const err = await res.json().catch(() => ({ error: "Re-analysis failed" }));
+        throw new Error(err.error || "Re-analysis failed");
+      }
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let accumulated = "";
+
+      function parseSectionsLocal(raw: string) {
+        function extract(tag: string) {
+          const re = new RegExp(`\\[${tag}\\]([\\s\\S]*?)\\[\\/${tag}\\]`, "i");
+          const m = raw.match(re);
+          return m ? m[1].trim() : "";
+        }
+        return {
+          headline: extract("HEADLINE"),
+          outline: extract("OUTLINE"),
+          evaldo: extract("EVALDO"),
+          cub: extract("CUB"),
+          offer: extract("OFFER"),
+          stockTease: extract("STOCK_TEASE"),
+          effectiveness: extract("EFFECTIVENESS"),
+        };
+      }
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        accumulated += decoder.decode(value, { stream: true });
+        const parsed = parseSectionsLocal(accumulated);
+        // Notify parent with streaming sections so UI updates in real time
+        if (parsed.headline || parsed.offer) {
+          onReanalyzed?.(parsed, null);
+        }
+      }
+
+      // Extract meta for fkScore
+      const metaMatch = accumulated.match(/\[META\]([\s\S]*?)\[\/META\]/);
+      let fk = null;
+      if (metaMatch) {
+        try { fk = JSON.parse(metaMatch[1]).fkScore ?? null; } catch { /* ignore */ }
+      }
+      const finalSections = parseSectionsLocal(accumulated);
+      onReanalyzed?.(finalSections, fk);
+    } catch (err) {
+      setReanalyzeError(err instanceof Error ? err.message : "Re-analysis failed");
+    } finally {
+      setReanalyzing(false);
+    }
+  }
+
   const defaultBrainTitle = (localDisplayName ?? filename).replace(/\.[^.]+$/, "");
 
   return (
@@ -188,6 +254,11 @@ export default function AnalysisResults({
           calibratedEffectiveness={effectivenessOverride}
           onClose={() => setBrainOpen(false)}
         />
+      )}
+      {reanalyzeError && (
+        <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg px-4 py-3 text-sm">
+          Re-analyze failed: {reanalyzeError}
+        </div>
       )}
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
@@ -221,7 +292,20 @@ export default function AnalysisResults({
           <ScoreBadges fkScore={fkScore} effectivenessScore={derivedEffectivenessScore} />
         </div>
         {!streaming && (
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center gap-2 shrink-0 flex-wrap">
+            {reviewId && (
+              <button
+                onClick={handleReanalyze}
+                disabled={reanalyzing}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium border transition-colors disabled:opacity-50"
+                style={{ borderColor: NAVY_BORDER, color: NAVY, background: NAVY_BG }}
+                onMouseEnter={e => !reanalyzing && (e.currentTarget.style.background = "#dce8f8")}
+                onMouseLeave={e => (e.currentTarget.style.background = NAVY_BG)}
+                title="Re-run full analysis with the current scoring system"
+              >
+                {reanalyzing ? "Re-analyzing…" : "↺ Re-analyze"}
+              </button>
+            )}
             <button
               onClick={() => setBrainOpen(true)}
               className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium border transition-colors"

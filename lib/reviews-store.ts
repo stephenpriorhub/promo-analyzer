@@ -234,6 +234,30 @@ export function renameReview(id: string, displayName: string): boolean {
   return true;
 }
 
+export function updateReviewSections(
+  id: string,
+  sections: AnalysisSections,
+  fkReadingEase: number | null,
+  fkGradeLevel: number | null
+): boolean {
+  const reviews = readReviews();
+  const idx = reviews.findIndex((r) => r.id === id);
+  if (idx === -1) return false;
+  reviews[idx].sections = sections;
+  reviews[idx].fkReadingEase = fkReadingEase;
+  reviews[idx].fkGradeLevel = fkGradeLevel;
+  const effectivenessMatch = sections.effectiveness.match(/(\d+(?:\.\d+)?)\s*\/\s*10/);
+  reviews[idx].effectivenessScore = effectivenessMatch
+    ? parseFloat(effectivenessMatch[1])
+    : null;
+  // Clear any previously calibrated effectiveness — it was based on the old scoring
+  if (reviews[idx].training?.calibratedEffectiveness) {
+    reviews[idx].training!.calibratedEffectiveness = undefined;
+  }
+  writeReviews(reviews);
+  return true;
+}
+
 export function deleteReview(id: string): boolean {
   const reviews = readReviews();
   const filtered = reviews.filter((r) => r.id !== id);

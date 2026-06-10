@@ -1,0 +1,193 @@
+import { NextRequest, NextResponse } from "next/server";
+import Anthropic from "@anthropic-ai/sdk";
+import fs from "fs";
+import path from "path";
+import { extractFile } from "@/lib/extract-text";
+import { calculateFKScore, type FKScore } from "@/lib/fk-score";
+import { SYSTEM_PROMPT, buildCalibrationBlock } from "@/lib/build-prompt";
+import {
+  getReviewById,
+  updateReviewSections,
+  getTrainingExamples,
+  FILES_DIR,
+  type AnalysisSections,
+} from "@/lib/reviews-store";
+import { getEnv } from "@/lib/env";
+
+export const runtime = "nodejs";
+export const maxDuration = 180;
+
+function parseSections(fullText: string): AnalysisSections {
+  function extract(tag: string): string {
+    const re = new RegExp(`\\[${tag}\\]([\\s\\S]*?)\\[\\/${tag}\\]`, "i");
+    const match = fullText.match(re);
+    return match ? match[1].trim() : "";
+  }
+  return {
+    headline: extract("HEADLINE"),
+    outline: extract("OUTLINE"),
+    evaldo: extract("EVALDO"),
+    cub: extract("CUB"),
+    offer: extract("OFFER"),
+    stockTease: extract("STOCK_TEASE"),
+    effectiveness: extract("EFFECTIVENESS"),
+  };
+}
+
+export async function POST(req: NextRequest) {
+  const { reviewId } = await req.json();
+
+  if (!reviewId) {
+    return NextResponse.json({ error: "reviewId required" }, { status: 400 });
+  }
+
+  const review = getReviewById(reviewId);
+  if (!review) {
+    return NextResponse.json({ error: "Review not found" }, { status: 404 });
+  }
+
+  // Find source file on disk
+  const fileDir = path.join(FILES_DIR, reviewId);
+  let buffer: Buffer | null = null;
+  let originalFilename = review.filename;
+
+  for (const ext of ["pdf", "docx"]) {
+    const filePath = path.join(fileDir, `source.${ext}`);
+    if (fs.existsSync(filePath)) {
+      buffer = fs.readFileSync(filePath);
+      originalFilename = review.filename;
+      break;
+    }
+  }
+
+  if (!buffer) {
+    return NextResponse.json(
+      { error: "Source file not found. Original file must have been uploaded to re-analyze." },
+      { status: 404 }
+    );
+  }
+
+  const client = new Anthropic({ apiKey: getEnv("ANTHROPIC_API_KEY") });
+
+  // Build calibration block (exclude this review itself to avoid circular feedback)
+  const trainingExamples = getTrainingExamples().filter(
+    (ex) => (review.displayName ?? review.filename.replace(/\.[^.]+$/, "")) !== ex.name
+  );
+  const calibrationBlock = buildCalibrationBlock(trainingExamples);
+  const systemPrompt = SYSTEM_PROMPT + calibrationBlock;
+
+  let uploadedFileId: string | null = null;
+
+  const extracted = await extractFile(buffer, originalFilename);
+
+  let fkScore: FKScore | null = null;
+  if (extracted.type === "text") {
+    fkScore = calculateFKScore(extracted.content);
+  } else if (extracted.type === "pdf_raw" && extracted.textForFK) {
+    fkScore = calculateFKScore(extracted.textForFK);
+  }
+
+  const isPdf = extracted.type === "pdf_raw";
+
+  if (isPdf) {
+    const uploadedFile = await client.beta.files.upload({
+      file: new File([buffer], originalFilename, { type: "application/pdf" }),
+    });
+    uploadedFileId = uploadedFile.id;
+  }
+
+  const preamble = [
+    "Analyze this promotional sales letter according to the instructions.",
+    extracted.type !== "text" && (extracted as { pageNote?: string }).pageNote
+      ? `\n${(extracted as { pageNote?: string }).pageNote}`
+      : "",
+    extracted.type === "text" && extracted.pageNote ? `\n${extracted.pageNote}` : "",
+  ].join("");
+
+  const encoder = new TextEncoder();
+  let fullText = "";
+
+  const stream = new ReadableStream({
+    async start(controller) {
+      try {
+        let anthropicStream;
+
+        if (isPdf && uploadedFileId) {
+          anthropicStream = await client.beta.messages.stream({
+            model: "claude-sonnet-4-6",
+            max_tokens: 16000,
+            system: systemPrompt,
+            betas: ["files-api-2025-04-14"],
+            messages: [
+              {
+                role: "user",
+                content: [
+                  {
+                    type: "document",
+                    source: { type: "file", file_id: uploadedFileId },
+                  },
+                  { type: "text", text: preamble },
+                ],
+              },
+            ],
+          });
+        } else {
+          const textContent = extracted.type === "text" ? extracted.content : "";
+          anthropicStream = await client.messages.stream({
+            model: "claude-sonnet-4-6",
+            max_tokens: 16000,
+            system: systemPrompt,
+            messages: [
+              {
+                role: "user",
+                content: [
+                  {
+                    type: "text",
+                    text: `${preamble}\n\n---\n\n${textContent}`,
+                  },
+                ],
+              },
+            ],
+          });
+        }
+
+        for await (const chunk of anthropicStream) {
+          if (
+            chunk.type === "content_block_delta" &&
+            chunk.delta.type === "text_delta"
+          ) {
+            const text = chunk.delta.text;
+            fullText += text;
+            controller.enqueue(encoder.encode(text));
+          }
+        }
+
+        const sections = parseSections(fullText);
+        updateReviewSections(
+          reviewId,
+          sections,
+          fkScore?.readingEase ?? null,
+          fkScore?.gradeLevel ?? null
+        );
+
+        const meta = JSON.stringify({ __meta: true, reviewId, fkScore });
+        controller.enqueue(encoder.encode(`\n[META]${meta}[/META]`));
+        controller.close();
+      } catch (err) {
+        controller.error(err);
+      } finally {
+        if (uploadedFileId) {
+          client.beta.files.delete(uploadedFileId).catch(() => {});
+        }
+      }
+    },
+  });
+
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "text/plain; charset=utf-8",
+      "Transfer-Encoding": "chunked",
+      "X-Accel-Buffering": "no",
+    },
+  });
+}
