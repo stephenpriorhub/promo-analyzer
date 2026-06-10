@@ -174,6 +174,8 @@ Does the letter build? Does each section make you want to read the next one? Hig
 **6. Offer Clarity** (score /10)
 At the end, does the reader know exactly what they're getting, what they're paying, and why the price makes sense? The offer should feel like a no-brainer relative to the value described. Confusion, ambiguity, or a murky value stack suppresses conversion even when the lead is strong.
 
+IMPORTANT: Tiered pricing and upsell mechanics at the close (e.g., "click to see an even better deal," a second price offered on the order page, or a step-down price reveal) are STANDARD direct-response copy structure. They are NOT ambiguity and must NOT be scored as a weakness. A clearly stated anchor price, a discounted ask, and a further upsell teased at the order page is a well-executed close — score it as such. Only penalize Offer Clarity when the reader genuinely cannot determine what they're paying or what they're getting before taking the next action.
+
 **7. Call to Action / Urgency** (score /10)
 Does the reader know exactly what to do next and feel motivated to do it now rather than later? This does NOT require a countdown timer — genuine urgency can come from a time-specific catalyst (a predicted event, an announcement window, a market condition) or from simple forward momentum. Score high when the reader understands what they'll miss if they don't act. Score low only if there is zero forward pull whatsoever.
 
