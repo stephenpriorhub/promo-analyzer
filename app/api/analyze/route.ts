@@ -61,7 +61,7 @@ export async function POST(req: NextRequest) {
     if (isPdf) {
       // Upload via Files API
       const uploadedFile = await client.beta.files.upload({
-        file: new File([buffer], file.name, { type: "application/pdf" }),
+        file: new File([Uint8Array.from(buffer)], file.name, { type: "application/pdf" }),
       });
       uploadedFileId = uploadedFile.id;
     }
