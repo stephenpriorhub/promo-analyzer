@@ -6,6 +6,9 @@ import { extractFile } from "@/lib/extract-text";
 import { calculateFKScore, type FKScore } from "@/lib/fk-score";
 import { SYSTEM_PROMPT, buildCalibrationBlock } from "@/lib/build-prompt";
 import { saveReview, getTrainingExamples, updateSourceFileMeta, FILES_DIR, type AnalysisSections } from "@/lib/reviews-store";
+import { getAllLessons, buildLearningBlock } from "@/lib/learning-kb";
+import { loadBrainContext, buildBrainContextBlock, detectGuru, detectPublisher } from "@/lib/brain-reader";
+import { parsePromoIntel, buildIntelNote, intelNoteTitle } from "@/lib/promo-intel";
 import { getEnv } from "@/lib/env";
 
 export const runtime = "nodejs";
@@ -25,6 +28,7 @@ function parseSections(fullText: string): AnalysisSections {
     offer: extract("OFFER"),
     stockTease: extract("STOCK_TEASE"),
     effectiveness: extract("EFFECTIVENESS"),
+    promoIntel: extract("PROMO_INTEL"),
   };
 }
 
@@ -32,10 +36,13 @@ export async function POST(req: NextRequest) {
   const client = new Anthropic({ apiKey: getEnv("ANTHROPIC_API_KEY") });
   let uploadedFileId: string | null = null;
 
-  // Build calibration block from any past reviews with publisher training data
+  // Build calibration block from past reviews with training data (tiered: gold vs. standard)
   const trainingExamples = getTrainingExamples();
   const calibrationBlock = buildCalibrationBlock(trainingExamples);
-  const systemPrompt = SYSTEM_PROMPT + calibrationBlock;
+
+  // Build learning KB block (generalizable lessons that survive delete/re-upload)
+  const lessons = getAllLessons();
+  const learningBlock = buildLearningBlock(lessons);
 
   try {
     const formData = await req.formData();
@@ -55,6 +62,18 @@ export async function POST(req: NextRequest) {
     } else if (extracted.type === "pdf_raw" && extracted.textForFK) {
       fkScore = calculateFKScore(extracted.textForFK);
     }
+
+    // Detect guru/publisher from raw text before analysis so we can inject
+    // brain vault context into the system prompt
+    const rawTextForDetection =
+      extracted.type === "text"
+        ? extracted.content
+        : extracted.type === "pdf_raw" && extracted.textForFK
+        ? extracted.textForFK
+        : "";
+    const brainCtx = loadBrainContext(rawTextForDetection);
+    const brainContextBlock = buildBrainContextBlock(brainCtx);
+    const systemPrompt = SYSTEM_PROMPT + calibrationBlock + learningBlock + brainContextBlock;
 
     const isPdf = extracted.type === "pdf_raw";
 
@@ -206,7 +225,11 @@ export async function POST(req: NextRequest) {
             fetch(`${baseUrl}/api/brain`, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ title: promoTitle, content: brainContent }),
+              body: JSON.stringify({
+                title: promoTitle,
+                content: brainContent,
+                subfolder: "promo-analysis-tool",
+              }),
             })
               .then((r) => {
                 if (r.ok) {
@@ -220,6 +243,32 @@ export async function POST(req: NextRequest) {
                 }
               })
               .catch((e) => console.warn(`[brain] Auto-save error for ${saved.id}:`, e));
+
+            // Fire-and-forget: write structured promo intelligence to the vault's
+            // Promo Intelligence inbox for the Brain Agent to review and merge.
+            const intel = parsePromoIntel(saved.sections.promoIntel);
+            if (intel) {
+              const intelContent = buildIntelNote(
+                intel,
+                promoTitle,
+                saved.date,
+                saved.id,
+                saved.effectivenessScore
+              );
+              fetch(`${baseUrl}/api/brain`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  title: intelNoteTitle(promoTitle),
+                  content: intelContent,
+                  subfolder: "promo-intelligence",
+                }),
+              })
+                .then((r) => {
+                  if (r.ok) console.log(`[brain] Saved promo intel for ${saved.id}`);
+                })
+                .catch((e) => console.warn(`[brain] Intel save error for ${saved.id}:`, e));
+            }
           })();
         } catch (err) {
           controller.error(err);

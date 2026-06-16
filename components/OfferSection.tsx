@@ -31,8 +31,30 @@ function parseLine(line: string): { label: string; value: string } | null {
   return null;
 }
 
-// Dimension line pattern: "1. Label: X/10 — rationale text"
-const DIMENSION_RE = /^\d+\.\s+(.+?):\s*(\d+(?:\.\d+)?)\s*\/\s*10\s*[—–-]\s*(.+)$/;
+// Global pattern to pull dimensions out of a continuous paragraph where the
+// model emitted them inline with no line breaks: "1. Hook Strength: 8/10 — ... 2. Believability: 7/10 — ..."
+// Lookahead stops each rationale at the next "N. " marker, the final "Score:", or end of string.
+const DIMENSION_GLOBAL_RE =
+  /(\d+)\.\s+([^:]+?):\s*(\d+(?:\.\d+)?)\s*\/\s*10\s*[—–-]\s*(.+?)(?=\s+\d+\.\s+[^:]+?:\s*\d|\s*[-–—]{1,3}\s*Score:|\s*Score:|$)/gis;
+
+/**
+ * Robustly extract the 8 dimensions whether the model emitted them on
+ * separate lines or as one running paragraph.
+ */
+function extractDimensions(text: string): { label: string; score: number; rationale: string }[] {
+  const cleaned = renderMarkdown(text);
+  const dims: { label: string; score: number; rationale: string }[] = [];
+  let m: RegExpExecArray | null;
+  DIMENSION_GLOBAL_RE.lastIndex = 0;
+  while ((m = DIMENSION_GLOBAL_RE.exec(cleaned)) !== null) {
+    dims.push({
+      label: m[2].trim(),
+      score: parseFloat(m[3]),
+      rationale: m[4].trim().replace(/\s+/g, " "),
+    });
+  }
+  return dims;
+}
 
 function dimensionColor(score: number): { bar: string; text: string } {
   if (score >= 8) return { bar: "#22c55e", text: "#166534" };
@@ -47,39 +69,26 @@ function EffectivenessBlock({
   effectiveness: string;
   calibratedEffectiveness: string | null;
 }) {
-  const activeContent = calibratedEffectiveness ?? effectiveness;
-  const lines = activeContent.split("\n").filter((l) => l.trim());
+  const activeContent = renderMarkdown(calibratedEffectiveness ?? effectiveness);
 
-  const dimensions: { label: string; score: number; rationale: string }[] = [];
-  const otherLines: { text: string; isScore: boolean; isRationale: boolean }[] = [];
+  // Extract dimensions robustly — handles both line-separated and run-on paragraph formats
+  const dimensions = extractDimensions(activeContent);
 
-  for (const line of lines) {
-    const dimMatch = line.match(DIMENSION_RE);
-    if (dimMatch) {
-      dimensions.push({
-        label: dimMatch[1].trim(),
-        score: parseFloat(dimMatch[2]),
-        rationale: dimMatch[3].trim(),
-      });
-    } else {
-      const trimmed = line.trim();
-      const isScore = /^Score:\s*\d/i.test(trimmed);
-      const isRationale = /^Rationale:/i.test(trimmed);
-      otherLines.push({ text: trimmed, isScore, isRationale });
-    }
+  // Final score: the "Score: X/10" marker, or the last standalone "X/10" if absent
+  const scoreMatch =
+    activeContent.match(/Score:\s*(\d+(?:\.\d+)?)\s*\/\s*10/i) ??
+    activeContent.match(/(\d+(?:\.\d+)?)\s*\/\s*10\s*$/);
+  const finalScore = scoreMatch ? parseFloat(scoreMatch[1]) : null;
+
+  // Rationale: everything after "Rationale:" if present, else the tail after the dimensions
+  let rationale = "";
+  const rationaleMatch = activeContent.match(/Rationale:\s*([\s\S]+)$/i);
+  if (rationaleMatch) {
+    rationale = rationaleMatch[1].trim().replace(/\s+/g, " ");
+  } else if (dimensions.length === 0) {
+    // No dimensions and no explicit rationale — show the whole thing minus the score line
+    rationale = activeContent.replace(/Score:\s*\d+(?:\.\d+)?\s*\/\s*10/i, "").trim();
   }
-
-  // Find final score from lines
-  const scoreLine = otherLines.find((l) => l.isScore);
-  const finalScore = scoreLine
-    ? parseFloat(scoreLine.text.match(/(\d+(?:\.\d+)?)/)?.[1] ?? "0")
-    : null;
-
-  const rationale = otherLines
-    .filter((l) => !l.isScore)
-    .map((l) => (l.isRationale ? l.text.replace(/^Rationale:\s*/i, "") : l.text))
-    .join(" ")
-    .trim();
 
   return (
     <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 space-y-4">
