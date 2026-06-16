@@ -159,6 +159,68 @@ export async function POST(req: NextRequest) {
           const meta = JSON.stringify({ __meta: true, reviewId: saved.id, fkScore });
           controller.enqueue(encoder.encode(`\n[META]${meta}[/META]`));
           controller.close();
+
+          // Fire-and-forget: auto-save to brain vault after every successful analysis
+          (() => {
+            const baseUrl =
+              process.env.NEXTAUTH_URL?.replace(/\/$/, "") ||
+              `http://${req.headers.get("host") ?? "localhost:3000"}`;
+            const promoTitle = saved.displayName ?? saved.filename.replace(/\.[^.]+$/, "");
+            const fkLine = fkScore
+              ? `- **FK Reading Ease:** ${fkScore.readingEase.toFixed(1)} | **FK Grade Level:** ${fkScore.gradeLevel.toFixed(1)}`
+              : "";
+            const brainContent = [
+              `# ${promoTitle}`,
+              "",
+              `- **Analyzed:** ${saved.date}`,
+              `- **Review ID:** ${saved.id}`,
+              saved.effectivenessScore != null
+                ? `- **Effectiveness Score:** ${saved.effectivenessScore}/10`
+                : "",
+              fkLine,
+              "",
+              "## Headline Analysis",
+              saved.sections.headline,
+              "",
+              "## Outline",
+              saved.sections.outline,
+              "",
+              "## Evaldo Score",
+              saved.sections.evaldo,
+              "",
+              "## CUB Score",
+              saved.sections.cub,
+              "",
+              "## Offer Analysis",
+              saved.sections.offer,
+              "",
+              "## Stock Tease",
+              saved.sections.stockTease,
+              "",
+              "## Effectiveness",
+              saved.sections.effectiveness,
+            ]
+              .filter((l) => l !== undefined)
+              .join("\n");
+
+            fetch(`${baseUrl}/api/brain`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ title: promoTitle, content: brainContent }),
+            })
+              .then((r) => {
+                if (r.ok) {
+                  console.log(`[brain] Auto-saved review ${saved.id} to brain vault`);
+                } else {
+                  r.json()
+                    .catch(() => ({}))
+                    .then((e) =>
+                      console.warn(`[brain] Auto-save failed for ${saved.id}:`, e)
+                    );
+                }
+              })
+              .catch((e) => console.warn(`[brain] Auto-save error for ${saved.id}:`, e));
+          })();
         } catch (err) {
           controller.error(err);
         } finally {
