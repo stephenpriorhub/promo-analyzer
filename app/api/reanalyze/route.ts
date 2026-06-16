@@ -12,6 +12,8 @@ import {
   FILES_DIR,
   type AnalysisSections,
 } from "@/lib/reviews-store";
+import { getAllLessons, buildLearningBlock } from "@/lib/learning-kb";
+import { loadBrainContext, buildBrainContextBlock } from "@/lib/brain-reader";
 import { getEnv } from "@/lib/env";
 
 export const runtime = "nodejs";
@@ -31,6 +33,7 @@ function parseSections(fullText: string): AnalysisSections {
     offer: extract("OFFER"),
     stockTease: extract("STOCK_TEASE"),
     effectiveness: extract("EFFECTIVENESS"),
+    promoIntel: extract("PROMO_INTEL"),
   };
 }
 
@@ -74,11 +77,23 @@ export async function POST(req: NextRequest) {
     (ex) => (review.displayName ?? review.filename.replace(/\.[^.]+$/, "")) !== ex.name
   );
   const calibrationBlock = buildCalibrationBlock(trainingExamples);
-  const systemPrompt = SYSTEM_PROMPT + calibrationBlock;
+
+  // Learning KB lessons survive delete/re-upload and inform every analysis
+  const learningBlock = buildLearningBlock(getAllLessons());
 
   let uploadedFileId: string | null = null;
 
   const extracted = await extractFile(buffer, originalFilename);
+
+  // Inject brain vault context (guru profile + copywriting principles)
+  const rawTextForDetection =
+    extracted.type === "text"
+      ? extracted.content
+      : extracted.type === "pdf_raw" && extracted.textForFK
+      ? extracted.textForFK
+      : "";
+  const brainContextBlock = buildBrainContextBlock(loadBrainContext(rawTextForDetection));
+  const systemPrompt = SYSTEM_PROMPT + calibrationBlock + learningBlock + brainContextBlock;
 
   let fkScore: FKScore | null = null;
   if (extracted.type === "text") {

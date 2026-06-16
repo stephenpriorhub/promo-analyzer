@@ -98,6 +98,9 @@ export default function TrainingTab({
   const [reasoning, setReasoning] = useState(initialTraining?.reasoning ?? "");
   const [lastSaved, setLastSaved] = useState(initialTraining?.lastUpdated ?? null);
 
+  const [isBestPerformer, setIsBestPerformer] = useState(
+    initialTraining?.isBestPerformer ?? false
+  );
   const [saving, setSaving] = useState(false);
   const [reevaluating, setReevaluating] = useState(false);
   const [reevalResult, setReevalResult] = useState<string | null>(null);
@@ -118,6 +121,7 @@ export default function TrainingTab({
       reasoning: reasoning.trim(),
       lastUpdated: new Date().toISOString(),
       calibratedEffectiveness: calibrated ?? initialTraining?.calibratedEffectiveness,
+      isBestPerformer,
     };
     await fetch("/api/reviews", {
       method: "PATCH",
@@ -143,6 +147,7 @@ export default function TrainingTab({
           performanceScore,
           myScore,
           reasoning: reasoning.trim(),
+          isBestPerformer,
         }),
       });
       const json = await res.json();
@@ -242,6 +247,34 @@ export default function TrainingTab({
           </p>
         </div>
         <ScoreSelector value={myScore} onChange={setMyScore} />
+      </div>
+
+      {/* Strong-signal flag — weight this context heavily in re-analysis */}
+      <div
+        className="rounded-xl p-4 border flex items-start gap-3 cursor-pointer select-none"
+        style={{
+          background: isBestPerformer ? NAVY_BG : "white",
+          borderColor: isBestPerformer ? NAVY : NAVY_BORDER,
+        }}
+        onClick={() => setIsBestPerformer((v) => !v)}
+      >
+        <div
+          className="mt-0.5 w-5 h-5 rounded flex items-center justify-center shrink-0 text-sm border-2 transition-all"
+          style={{
+            background: isBestPerformer ? NAVY : "white",
+            borderColor: isBestPerformer ? NAVY : "#cbd5e1",
+          }}
+        >
+          {isBestPerformer && <span className="text-white font-bold text-xs">✓</span>}
+        </div>
+        <div>
+          <p className="text-sm font-bold" style={{ color: NAVY }}>
+            Weight this context heavily
+          </p>
+          <p className="text-xs text-gray-500 mt-0.5">
+            Check when your feedback is a strong signal you want the re-analysis to take seriously. It will lean into your context and stop docking the score for minor copy nitpicks. Used internally to calibrate scoring — never shown in the analysis output.
+          </p>
+        </div>
       </div>
 
       {/* Reasoning */}

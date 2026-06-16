@@ -27,6 +27,7 @@ export interface TrainingData {
   reasoning: string;
   lastUpdated: string;
   calibratedEffectiveness?: string; // re-evaluated effectiveness after training feedback
+  isBestPerformer?: boolean;        // manually flagged as all-time / gold standard
 }
 
 export interface SavedReview {
@@ -51,6 +52,7 @@ export interface AnalysisSections {
   offer: string;
   stockTease: string;
   effectiveness: string;
+  promoIntel?: string; // raw JSON intel extracted for the brain vault
 }
 
 function ensureDataDir() {
@@ -93,11 +95,11 @@ export function getTrainingExamples(): Array<{
   myScore: number | null;
   reasoning: string;
   bigIdea: string;
+  isBestPerformer: boolean;
 }> {
   const reviews = readReviews().filter((r) => r.training != null);
   return reviews.map((r) => {
     const name = r.displayName ?? r.filename.replace(/\.[^.]+$/, "");
-    // Extract Big Idea from offer section
     let bigIdea = "";
     for (const line of (r.sections.offer ?? "").split("\n")) {
       const stripped = line.replace(/^[-•]\s*/, "").replace(/\*\*([^*]+)\*\*/g, "$1");
@@ -109,6 +111,9 @@ export function getTrainingExamples(): Array<{
         }
       }
     }
+    const isBestPerformer =
+      r.training!.isBestPerformer === true ||
+      (r.training!.performanceScore !== null && r.training!.performanceScore >= 9);
     return {
       name,
       promoType: r.training!.promoType ?? null,
@@ -117,6 +122,7 @@ export function getTrainingExamples(): Array<{
       myScore: r.training!.myScore,
       reasoning: r.training!.reasoning,
       bigIdea,
+      isBestPerformer,
     };
   });
 }
