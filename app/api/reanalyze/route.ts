@@ -92,7 +92,7 @@ export async function POST(req: NextRequest) {
       : extracted.type === "pdf_raw" && extracted.textForFK
       ? extracted.textForFK
       : "";
-  const brainContextBlock = buildBrainContextBlock(loadBrainContext(rawTextForDetection));
+  const brainContextBlock = buildBrainContextBlock(await loadBrainContext(rawTextForDetection));
   const systemPrompt = SYSTEM_PROMPT + calibrationBlock + learningBlock + brainContextBlock;
 
   let fkScore: FKScore | null = null;

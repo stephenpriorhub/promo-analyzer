@@ -48,6 +48,41 @@ function bullets(items?: string[]): string {
 }
 
 /**
+ * Map a guru name as it appears in promo copy to the canonical brain-vault note
+ * title, so the [[wikilink]] resolves to the real profile (and forms a graph
+ * edge) instead of creating an orphan. Matching is loose (substring, first
+ * name) because promo copy often uses partial names. If no canonical match,
+ * we still emit a [[wikilink]] on the raw name — Obsidian renders it as an
+ * unresolved link the Brain Agent can later reconcile.
+ */
+const CANONICAL_GURUS = [
+  "Bryan Bottarelli",
+  "Karim Rahemtulla",
+  "Nate Bear",
+  "Chris Johnson",
+];
+
+function canonicalGuru(name?: string | null): string | null {
+  if (!name) return null;
+  const n = name.trim().toLowerCase();
+  const hit = CANONICAL_GURUS.find(
+    (c) => c.toLowerCase() === n || n.includes(c.toLowerCase()) || c.toLowerCase().includes(n)
+  );
+  return hit ?? null;
+}
+
+/** Wrap a value as a [[wikilink]], resolving gurus to canonical titles. */
+function wikiGuru(name?: string | null): string {
+  if (!name) return "Unknown";
+  return `[[${canonicalGuru(name) ?? name}]]`;
+}
+
+function wiki(value?: string | null): string {
+  if (!value) return "Unknown";
+  return `[[${value}]]`;
+}
+
+/**
  * Build the markdown intel note. `promoName` and `date` are caller-supplied
  * so this stays pure (no Date.now() — important for resumable workflows).
  */
@@ -80,9 +115,11 @@ created: ${date}
 
 > [!info] Auto-extracted by Promo Analyzer. Brain Agent: review and merge verified facts into the canonical guru/product/publication profiles, then mark this note processed.
 
-- **Guru:** ${guru.name ?? "Unknown"}
-- **Publication:** ${intel.publication ?? "Unknown"}
-- **Product:** ${product.name ?? "Unknown"}${effectivenessScore != null ? `\n- **Predicted Effectiveness:** ${effectivenessScore}/10` : ""}
+- **Guru:** ${wikiGuru(guru.name)}
+- **Publication:** ${wiki(intel.publication)}
+- **Product:** ${wiki(product.name)}${effectivenessScore != null ? `\n- **Predicted Effectiveness:** ${effectivenessScore}/10` : ""}
+
+> [!note] Connections: ${[wikiGuru(guru.name), wiki(intel.publication), wiki(product.name)].filter((x) => x !== "Unknown").join(" · ") || "_none resolved_"}
 
 ## Guru Intelligence
 
