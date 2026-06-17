@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import PromoUploader from "@/components/PromoUploader";
 import AnalysisResults from "@/components/AnalysisResults";
 import PastReviews from "@/components/PastReviews";
@@ -75,6 +75,20 @@ export default function Home() {
   const [view, setView] = useState<ViewState>({ type: "upload" });
   const [refreshReviews, setRefreshReviews] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const reviewId = new URLSearchParams(window.location.search).get("review");
+    if (!reviewId) return;
+    void fetch("/api/reviews")
+      .then((r) => r.json())
+      .then((reviews: SavedReview[]) => {
+        const found = reviews.find((r) => r.id === reviewId);
+        if (found) {
+          setView({ type: "review", data: found });
+          window.history.replaceState({}, "", "/");
+        }
+      });
+  }, []);
 
   const handleFile = useCallback((file: File) => {
     const id = crypto.randomUUID();
