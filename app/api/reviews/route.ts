@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAllReviews, deleteReview, renameReview, updateReviewTraining, getReviewById } from "@/lib/reviews-store";
 import { detectGuru, detectPublisher } from "@/lib/brain-reader";
+import { extractAndStoreLessons } from "@/lib/extract-lessons";
 
 export const runtime = "nodejs";
+export const maxDuration = 60;
 
 export async function GET() {
   const reviews = getAllReviews();
@@ -35,38 +37,33 @@ export async function PATCH(req: NextRequest) {
     if (!ok) return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
+  let lessonsAdded = 0;
   if (training !== undefined) {
     const ok = updateReviewTraining(id, training);
     if (!ok) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-    // Fire-and-forget: extract generalizable lessons into the learning KB
+    // Extract generalizable lessons in-process (no fragile self-HTTP-fetch).
+    // Awaited so the response confirms the lesson actually landed.
     const review = getReviewById(id);
-    if (review && (training.performanceScore !== null || training.myScore !== null)) {
+    if (review && (training.performanceScore != null || training.myScore != null)) {
       const offerText = review.sections.offer ?? "";
       const guru = detectGuru(offerText) ?? detectGuru(review.sections.effectiveness ?? "");
       const publisher = detectPublisher(offerText);
       const promoName = review.displayName ?? review.filename.replace(/\.[^.]+$/, "");
 
-      const baseUrl =
-        process.env.NEXTAUTH_URL?.replace(/\/$/, "") ||
-        `http://localhost:${process.env.PORT ?? 3002}`;
-
-      fetch(`${baseUrl}/api/learning/extract`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          promoName,
-          publisher,
-          guru,
-          promoType: training.promoType,
-          effectiveness: review.sections.effectiveness,
-          performanceScore: training.performanceScore,
-          myScore: training.myScore,
-          reasoning: training.reasoning,
-        }),
-      }).catch(() => {}); // non-fatal
+      const result = await extractAndStoreLessons({
+        promoName,
+        publisher,
+        guru,
+        promoType: training.promoType,
+        effectiveness: review.sections.effectiveness,
+        performanceScore: training.performanceScore,
+        myScore: training.myScore,
+        reasoning: training.reasoning,
+      });
+      lessonsAdded = result.lessonsAdded;
     }
   }
 
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, lessonsAdded });
 }
