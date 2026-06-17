@@ -91,9 +91,18 @@ export function getAllLessons(): Lesson[] {
   return readKB().lessons;
 }
 
+/** Normalized key for dedup: same lesson text + guru is considered a duplicate. */
+function lessonKey(lesson: string, guru: string | null): string {
+  return `${(guru ?? "").toLowerCase().trim()}::${lesson.toLowerCase().replace(/\s+/g, " ").trim()}`;
+}
+
 export function addLessons(newLessons: Omit<Lesson, "id" | "createdAt" | "updatedAt">[]): void {
   const kb = readKB();
+  const seen = new Set(kb.lessons.map((l) => lessonKey(l.lesson, l.guru)));
   for (const l of newLessons) {
+    const key = lessonKey(l.lesson, l.guru);
+    if (seen.has(key)) continue; // skip duplicates — idempotent re-runs won't bloat the KB
+    seen.add(key);
     kb.lessons.push({
       ...l,
       id: `lesson_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
@@ -102,6 +111,29 @@ export function addLessons(newLessons: Omit<Lesson, "id" | "createdAt" | "update
     });
   }
   writeKB(kb);
+}
+
+/** Replace the entire lesson set (used by backfill for an idempotent rebuild). */
+export function replaceAllLessons(newLessons: Omit<Lesson, "id" | "createdAt" | "updatedAt">[]): void {
+  const seen = new Set<string>();
+  const deduped: Lesson[] = [];
+  for (const l of newLessons) {
+    const key = lessonKey(l.lesson, l.guru);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    deduped.push({
+      ...l,
+      id: `lesson_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+  }
+  writeKB({ version: 1, lastUpdated: new Date().toISOString(), lessons: deduped });
+}
+
+/** Wipe all lessons. */
+export function clearAllLessons(): void {
+  writeKB({ version: 1, lastUpdated: new Date().toISOString(), lessons: [] });
 }
 
 /**

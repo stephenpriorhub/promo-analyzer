@@ -13,11 +13,16 @@ import { NextResponse } from "next/server";
 import { getAllReviews } from "@/lib/reviews-store";
 import { detectGuru, detectPublisher } from "@/lib/brain-reader";
 import { extractAndStoreLessons } from "@/lib/extract-lessons";
+import { clearAllLessons } from "@/lib/learning-kb";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
 export async function POST() {
+  // Idempotent rebuild: wipe the KB, then regenerate from current trained reviews.
+  // Safe to re-run — won't accumulate duplicates.
+  clearAllLessons();
+
   const reviews = getAllReviews();
   const results: { promo: string; lessonsAdded: number; skipped?: boolean; error?: string }[] = [];
 
