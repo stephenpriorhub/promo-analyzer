@@ -4,6 +4,7 @@ import { useState, useCallback, useRef } from "react";
 import PromoUploader from "@/components/PromoUploader";
 import AnalysisResults from "@/components/AnalysisResults";
 import PastReviews from "@/components/PastReviews";
+import LessonsTab from "@/components/LessonsTab";
 import type { AnalysisSections, SavedReview, TrainingData } from "@/lib/reviews-store";
 import type { FKScore } from "@/lib/fk-score";
 import { readingEaseLabel } from "@/lib/fk-score";
@@ -66,7 +67,8 @@ interface Job {
 type ViewState =
   | { type: "upload" }
   | { type: "job"; id: string }
-  | { type: "review"; data: SavedReview };
+  | { type: "review"; data: SavedReview }
+  | { type: "lessons" };
 
 export default function Home() {
   const [jobs, setJobs] = useState<Job[]>([]);
@@ -250,15 +252,35 @@ export default function Home() {
           }}
         />
 
-        <button
-          onClick={() => fileInputRef.current?.click()}
-          className="text-sm px-3 py-1.5 rounded border transition-colors font-medium"
-          style={{ borderColor: "rgba(255,255,255,0.3)", color: "white", background: "transparent" }}
-          onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.1)")}
-          onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
-        >
-          + New Promo
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() =>
+              setView((prev) => (prev.type === "lessons" ? { type: "upload" } : { type: "lessons" }))
+            }
+            className="text-sm px-3 py-1.5 rounded border transition-colors font-medium"
+            style={{
+              borderColor: "rgba(255,255,255,0.3)",
+              color: "white",
+              background: view.type === "lessons" ? "rgba(255,255,255,0.18)" : "transparent",
+            }}
+            onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.1)")}
+            onMouseLeave={(e) =>
+              (e.currentTarget.style.background =
+                view.type === "lessons" ? "rgba(255,255,255,0.18)" : "transparent")
+            }
+          >
+            Lessons Learned
+          </button>
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="text-sm px-3 py-1.5 rounded border transition-colors font-medium"
+            style={{ borderColor: "rgba(255,255,255,0.3)", color: "white", background: "transparent" }}
+            onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.1)")}
+            onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+          >
+            + New Promo
+          </button>
+        </div>
       </header>
 
       <div className="flex flex-1 overflow-hidden">
@@ -295,6 +317,9 @@ export default function Home() {
               {displayError}
             </div>
           )}
+
+          {/* Lessons Learned — global knowledge base */}
+          {view.type === "lessons" && <LessonsTab />}
 
           {/* Upload screen */}
           {view.type === "upload" && (

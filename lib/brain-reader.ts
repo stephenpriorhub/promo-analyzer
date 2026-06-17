@@ -18,6 +18,9 @@ const BRAIN_DIR =
 
 const RESOURCES = path.join(BRAIN_DIR, "Resources");
 
+const BRAIN_GITHUB_REPO = process.env.BRAIN_GITHUB_REPO ?? "stephenpriorhub/brain";
+const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
+
 // Maps known guru names (as they appear in promo copy) to their brain vault files
 const GURU_MAP: Record<string, string> = {
   "Bryan Bottarelli": "Bryan Bottarelli.md",
@@ -39,13 +42,52 @@ const PUBLISHER_KEYWORDS: Record<string, string> = {
   "Banyan Hill": "Banyan Hill",
 };
 
-function readFile(filePath: string): string | null {
+function readFileLocal(filePath: string): string | null {
   try {
     if (!fs.existsSync(filePath)) return null;
     return fs.readFileSync(filePath, "utf-8");
   } catch {
     return null;
   }
+}
+
+/**
+ * Read a vault file via the GitHub Contents API. Works on Railway where the
+ * vault isn't mounted. `relPath` is repo-relative, e.g.
+ * "Resources/Bryan Bottarelli.md". Returns null gracefully on any failure
+ * (e.g. 404 for a guru with no profile) — never throws.
+ */
+async function readViaGitHub(relPath: string): Promise<string | null> {
+  if (!GITHUB_TOKEN) return null;
+  try {
+    const apiBase = `https://api.github.com/repos/${BRAIN_GITHUB_REPO}/contents/${encodeURIComponent(relPath)}`;
+    const res = await fetch(apiBase, {
+      headers: {
+        Authorization: `Bearer ${GITHUB_TOKEN}`,
+        "User-Agent": "promo-analyzer",
+        Accept: "application/vnd.github+json",
+      },
+    });
+    if (!res.ok) return null;
+    const json = (await res.json()) as { content?: string };
+    if (!json.content) return null;
+    return Buffer.from(json.content, "base64").toString("utf-8");
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Read a vault file: GitHub Contents API first (when GITHUB_TOKEN is set),
+ * falling back to the local filesystem if GitHub fails or no token is present.
+ * `relPath` is repo-relative; `localPath` is the absolute local path.
+ */
+async function readVaultFile(relPath: string, localPath: string): Promise<string | null> {
+  if (GITHUB_TOKEN) {
+    const fromGitHub = await readViaGitHub(relPath);
+    if (fromGitHub !== null) return fromGitHub;
+  }
+  return readFileLocal(localPath);
 }
 
 /** Detect guru name from offer section text */
@@ -72,16 +114,20 @@ export interface BrainContext {
 }
 
 /** Load relevant brain vault context for a given promo offer section */
-export function loadBrainContext(offerText: string): BrainContext {
+export async function loadBrainContext(offerText: string): Promise<BrainContext> {
   const guru = detectGuru(offerText);
   const publisher = detectPublisher(offerText);
 
   let guruProfile: string | null = null;
   if (guru && GURU_MAP[guru]) {
-    guruProfile = readFile(path.join(RESOURCES, GURU_MAP[guru]));
+    guruProfile = await readVaultFile(
+      `Resources/${GURU_MAP[guru]}`,
+      path.join(RESOURCES, GURU_MAP[guru])
+    );
   }
 
-  const copywritingPrinciples = readFile(
+  const copywritingPrinciples = await readVaultFile(
+    "Resources/Promo Analysis/Copywriting Principles.md",
     path.join(RESOURCES, "Promo Analysis", "Copywriting Principles.md")
   );
 
