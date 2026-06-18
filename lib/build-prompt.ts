@@ -151,7 +151,7 @@ Example:
 [OFFER]
 Bullet-point summary:
 - **Big Idea**: (1-2 sentences — the single overarching copy concept driving this promo; what makes a skeptical 60-year-old want to keep reading)
-- **Publisher**: (the company or brand running this promotion — infer from branding, legal disclaimers, URLs, or copy style. Examples: InvestorPlace, Paradigm Press, Stansberry Research, Oxford Group / Monument Traders Alliance, Banyan Hill, Legacy Research, Porter & Co)
+- **Publisher**: (the company or brand running this promotion. FIRST consult the Industry Publishing Directory provided below: if a guru name or publication named or implied anywhere in the copy matches a directory row, attribute the Publisher and parent company directly from that row — this is a high-confidence identification, state it plainly. ONLY if there is no directory match should you fall back to inferring the publisher from branding, legal disclaimers, URLs, or copy style — and when you do, you MUST explicitly label it "(inferred — not in directory, low confidence)". Never present a style-based guess as a confident identification. Examples of publishers: InvestorPlace, Paradigm Press, Stansberry Research, Oxford Group / Monument Traders Alliance, Banyan Hill, Legacy Research, Porter & Co)
 - **Product name**:
 - **What it is** (newsletter, service, software, etc.):
 - **Price(s)**:
@@ -194,6 +194,10 @@ Schema:
     "backtest_data": "any historical backtest figures cited (e.g. 'scanner shows 83% win rate, 115% avg gain in 24hrs over X trades') or null"
   },
   "publication": "string or null — the publisher/imprint running this (MTA, Paradigm, Stansberry, etc.)",
+  "strategies": ["each distinct trading/investing strategy or mechanism the promo or guru pushes (e.g. 'post-earnings drift', 'selling cash-secured puts', 'LEAPs on beaten-down value stocks', 'options on biotech catalysts')"],
+  "topics": ["each recurring theme or subject matter the promo centers on (e.g. 'AI infrastructure', 'energy/oil', 'Fed policy', 'crypto', 'gold/inflation hedge')"],
+  "guru_beliefs": ["each stated market philosophy or belief the guru asserts (e.g. 'the Fed always blinks first', 'small caps outperform after rate cuts', 'volatility is opportunity')"],
+  "products_mentioned": ["any OTHER products, services, newsletters, or bundles named in the copy beyond the primary product being sold (e.g. cross-sold or referenced sibling services)"],
   "audience_signals": ["any clues about the specific audience this is targeting beyond the default persona"],
   "notable_facts": ["any other reusable fact worth remembering about this promo, guru, or product that doesn't fit above"]
 }
