@@ -197,6 +197,90 @@ export function buildDirectoryBlock(text: string | null): string {
   ].join("\n");
 }
 
+export interface DirectoryEntry {
+  guru: string;
+  publication: string;
+  parent: string;
+}
+
+/** Strip wikilink brackets and trailing parentheticals from a directory cell. */
+function cleanCell(cell: string): string {
+  return cell
+    .replace(/\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/g, "$1")
+    .replace(/\*\*/g, "")
+    .trim();
+}
+
+/**
+ * Parse the Financial Publishing Directory markdown table into structured rows.
+ * Expected columns: Guru | Publication | Parent Company | Strategies | Topics | Confidence
+ */
+export function parseDirectory(text: string | null): DirectoryEntry[] {
+  if (!text) return [];
+  const rows: DirectoryEntry[] = [];
+  for (const line of text.split("\n")) {
+    const t = line.trim();
+    if (!t.startsWith("|")) continue;
+    const cells = t.split("|").map((c) => c.trim());
+    // cells[0] is empty (leading pipe). guru=1, publication=2, parent=3
+    if (cells.length < 4) continue;
+    const guru = cleanCell(cells[1] ?? "");
+    const publication = cleanCell(cells[2] ?? "");
+    const parent = cleanCell(cells[3] ?? "");
+    // Skip header / separator rows
+    if (!guru || /^guru$/i.test(guru) || /^-+$/.test(guru)) continue;
+    rows.push({ guru, publication, parent });
+  }
+  return rows;
+}
+
+/**
+ * Deterministically match a promo's text against the directory. Scans for any
+ * guru OR publication name appearing in the copy (case-insensitive). Returns the
+ * matched rows so a forceful, specific attribution directive can be injected —
+ * far more reliable than asking the model to cross-reference a table itself.
+ */
+export function matchDirectoryEntities(promoText: string, directoryText: string | null): DirectoryEntry[] {
+  const entries = parseDirectory(directoryText);
+  if (entries.length === 0) return [];
+  const hay = promoText.toLowerCase();
+  const matches: DirectoryEntry[] = [];
+  const seen = new Set<string>();
+  for (const e of entries) {
+    const guruHit = e.guru.length >= 5 && hay.includes(e.guru.toLowerCase());
+    const pubHit = e.publication.length >= 5 && hay.includes(e.publication.toLowerCase());
+    if (guruHit || pubHit) {
+      const key = `${e.guru}::${e.publication}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        matches.push(e);
+      }
+    }
+  }
+  return matches;
+}
+
+/**
+ * Build a high-priority, authoritative attribution directive from directory
+ * matches. This is what actually drives publisher identification — code found
+ * the name in the copy, so the model must not override it with style guesses.
+ */
+export function buildDirectiveBlock(matches: DirectoryEntry[]): string {
+  if (matches.length === 0) return "";
+  const lines: string[] = [];
+  lines.push("\n\n## CONFIRMED ATTRIBUTION — AUTHORITATIVE (from brain directory)");
+  lines.push(
+    "The promo copy explicitly names the following known entities, matched against the brain's verified publishing directory. In the [OFFER] section you MUST attribute the Publisher and guru using these mappings. Do NOT let price point, VSL/format style, or copy tone override these — they are confirmed facts, not inferences:"
+  );
+  for (const m of matches) {
+    lines.push(`- Guru "${m.guru}" → Publication: ${m.publication} → Parent company: ${m.parent}`);
+  }
+  if (matches.length > 1) {
+    lines.push("If several are listed, choose the one whose publication/product best matches this promo.");
+  }
+  return lines.join("\n");
+}
+
 /** Strip Obsidian-specific markup that's not useful in a prompt */
 function stripObsidianMarkup(text: string): string {
   return text
