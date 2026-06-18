@@ -26,6 +26,10 @@ export interface PromoIntel {
     backtest_data?: string | null;
   } | null;
   publication?: string | null;
+  strategies?: string[];
+  topics?: string[];
+  guru_beliefs?: string[];
+  products_mentioned?: string[];
   audience_signals?: string[];
   notable_facts?: string[];
 }
@@ -143,6 +147,18 @@ ${bullets(guru.credentials_claimed)}
 
 ### Proof Elements
 ${bullets(product.proof_elements)}
+
+## Strategies & Mechanisms Pushed
+${bullets(intel.strategies)}
+
+## Topics & Themes
+${bullets(intel.topics)}
+
+## Guru Beliefs / Market Philosophy
+${bullets(intel.guru_beliefs)}
+
+## Other Products Mentioned
+${bullets(intel.products_mentioned)}
 
 ## Audience Signals
 ${bullets(intel.audience_signals)}

@@ -167,6 +167,36 @@ export function buildBrainContextBlock(ctx: BrainContext): string {
   return lines.join("\n");
 }
 
+/**
+ * Load the Industry Publishing Directory (Resources/Financial Publishing
+ * Directory.md) — a compact markdown table mapping gurus to publications,
+ * parent companies, strategies, and topics. GitHub Contents API first, local
+ * fallback. Returns null gracefully if the file doesn't exist (404) — never
+ * throws.
+ */
+export async function loadPublishingDirectory(): Promise<string | null> {
+  return readVaultFile(
+    "Resources/Financial Publishing Directory.md",
+    path.join(RESOURCES, "Financial Publishing Directory.md")
+  );
+}
+
+/**
+ * Wrap the raw directory markdown in a compact prompt section. The directory
+ * is already compact markdown — inject as-is (no parsing). Returns "" if there
+ * is no directory available so the prompt stays clean.
+ */
+export function buildDirectoryBlock(text: string | null): string {
+  if (!text || !text.trim()) return "";
+  const cleaned = stripObsidianMarkup(text);
+  return [
+    "\n\n## Industry Publishing Directory (use to identify the publisher/guru/parent)",
+    "This is a directory of known financial-publishing gurus, their publications, parent companies, strategies, and topics. Use it to identify who is behind a promo with high confidence instead of guessing from style.",
+    "",
+    cleaned,
+  ].join("\n");
+}
+
 /** Strip Obsidian-specific markup that's not useful in a prompt */
 function stripObsidianMarkup(text: string): string {
   return text

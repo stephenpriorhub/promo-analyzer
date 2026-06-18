@@ -13,7 +13,7 @@ import {
   type AnalysisSections,
 } from "@/lib/reviews-store";
 import { getAllLessons, buildLearningBlock } from "@/lib/learning-kb";
-import { loadBrainContext, buildBrainContextBlock } from "@/lib/brain-reader";
+import { loadBrainContext, buildBrainContextBlock, loadPublishingDirectory, buildDirectoryBlock } from "@/lib/brain-reader";
 import { getEnv } from "@/lib/env";
 
 export const runtime = "nodejs";
@@ -93,7 +93,8 @@ export async function POST(req: NextRequest) {
       ? extracted.textForFK
       : "";
   const brainContextBlock = buildBrainContextBlock(await loadBrainContext(rawTextForDetection));
-  const systemPrompt = SYSTEM_PROMPT + calibrationBlock + learningBlock + brainContextBlock;
+  const directoryBlock = buildDirectoryBlock(await loadPublishingDirectory());
+  const systemPrompt = SYSTEM_PROMPT + calibrationBlock + learningBlock + directoryBlock + brainContextBlock;
 
   let fkScore: FKScore | null = null;
   if (extracted.type === "text") {
