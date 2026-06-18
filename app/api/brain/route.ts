@@ -5,7 +5,7 @@ import path from "path";
 export const runtime = "nodejs";
 
 const BRAIN_DIR = process.env.BRAIN_DIR
-  ?? "/Users/stephenprior/Documents/github/brain/Resources/Promo Analysis/Promo Analysis Tool";
+  ?? "/Users/stephenprior/github/brain/Resources/Promo Analysis/Promo Analysis Tool";
 
 // Base of the vault repo (strip the Promo Analysis Tool suffix) for writing to other areas
 const BRAIN_VAULT_ROOT = BRAIN_DIR.replace(/\/Resources\/.*$/, "");

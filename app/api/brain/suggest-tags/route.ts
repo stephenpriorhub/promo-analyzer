@@ -6,7 +6,7 @@ import { getEnv } from "@/lib/env";
 export const runtime = "nodejs";
 
 const BRAIN_GITHUB_REPO = process.env.BRAIN_GITHUB_REPO ?? "stephenpriorhub/brain";
-const BRAIN_DIR_LOCAL = "/Users/stephenprior/Documents/github/brain";
+const BRAIN_DIR_LOCAL = "/Users/stephenprior/github/brain";
 
 /**
  * Fetch vault tags via GitHub Contents API.
