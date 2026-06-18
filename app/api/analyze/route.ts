@@ -7,7 +7,7 @@ import { calculateFKScore, type FKScore } from "@/lib/fk-score";
 import { SYSTEM_PROMPT, buildCalibrationBlock } from "@/lib/build-prompt";
 import { saveReview, getTrainingExamples, updateSourceFileMeta, FILES_DIR, type AnalysisSections } from "@/lib/reviews-store";
 import { getAllLessons, buildLearningBlock } from "@/lib/learning-kb";
-import { loadBrainContext, buildBrainContextBlock, loadPublishingDirectory, buildDirectoryBlock, detectGuru, detectPublisher } from "@/lib/brain-reader";
+import { loadBrainContext, buildBrainContextBlock, loadPublishingDirectory, buildDirectoryBlock, matchDirectoryEntities, buildDirectiveBlock, detectGuru, detectPublisher } from "@/lib/brain-reader";
 import { parsePromoIntel, buildIntelNote, intelNoteTitle } from "@/lib/promo-intel";
 import { getEnv } from "@/lib/env";
 
@@ -73,8 +73,11 @@ export async function POST(req: NextRequest) {
         : "";
     const brainCtx = await loadBrainContext(rawTextForDetection);
     const brainContextBlock = buildBrainContextBlock(brainCtx);
-    const directoryBlock = buildDirectoryBlock(await loadPublishingDirectory());
-    const systemPrompt = SYSTEM_PROMPT + calibrationBlock + learningBlock + directoryBlock + brainContextBlock;
+    const directoryText = await loadPublishingDirectory();
+    const directoryBlock = buildDirectoryBlock(directoryText);
+    // Deterministic match: code finds the guru/publication in the copy and forces attribution
+    const directiveBlock = buildDirectiveBlock(matchDirectoryEntities(rawTextForDetection, directoryText));
+    const systemPrompt = SYSTEM_PROMPT + calibrationBlock + learningBlock + directoryBlock + brainContextBlock + directiveBlock;
 
     const isPdf = extracted.type === "pdf_raw";
 
