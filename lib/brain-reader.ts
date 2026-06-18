@@ -243,12 +243,17 @@ export function parseDirectory(text: string | null): DirectoryEntry[] {
 export function matchDirectoryEntities(promoText: string, directoryText: string | null): DirectoryEntry[] {
   const entries = parseDirectory(directoryText);
   if (entries.length === 0) return [];
-  const hay = promoText.toLowerCase();
+  // Normalize whitespace — .docx extraction often splits names across runs
+  // ("Larry  Benedict"), so collapse all whitespace before matching.
+  const norm = (s: string) => s.toLowerCase().replace(/\s+/g, " ").trim();
+  const hay = norm(promoText);
   const matches: DirectoryEntry[] = [];
   const seen = new Set<string>();
   for (const e of entries) {
-    const guruHit = e.guru.length >= 5 && hay.includes(e.guru.toLowerCase());
-    const pubHit = e.publication.length >= 5 && hay.includes(e.publication.toLowerCase());
+    const guruN = norm(e.guru);
+    const pubN = norm(e.publication);
+    const guruHit = guruN.length >= 5 && hay.includes(guruN);
+    const pubHit = pubN.length >= 5 && hay.includes(pubN);
     if (guruHit || pubHit) {
       const key = `${e.guru}::${e.publication}`;
       if (!seen.has(key)) {
