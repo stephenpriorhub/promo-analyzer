@@ -3,12 +3,13 @@
 import { useCallback, useState } from "react";
 
 interface Props {
-  onFile: (file: File) => void;
+  onFile: (file: File, promoRunStartDate: string | null) => void;
   disabled?: boolean;
 }
 
 export default function PromoUploader({ onFile, disabled }: Props) {
   const [dragging, setDragging] = useState(false);
+  const [runDate, setRunDate] = useState("");
 
   const handleFile = useCallback(
     (file: File) => {
@@ -17,9 +18,9 @@ export default function PromoUploader({ onFile, disabled }: Props) {
         alert("Please upload a .docx or .pdf file.");
         return;
       }
-      onFile(file);
+      onFile(file, runDate || null);
     },
-    [onFile]
+    [onFile, runDate]
   );
 
   const onDrop = useCallback(
@@ -39,6 +40,22 @@ export default function PromoUploader({ onFile, disabled }: Props) {
   };
 
   return (
+    <div className="w-full space-y-3">
+      <div className="flex flex-col gap-1">
+        <label htmlFor="promo-run-date" className="text-xs font-semibold uppercase tracking-wider" style={{ color: "#012479" }}>
+          Approx. date promo started running <span className="font-normal text-gray-400">(optional)</span>
+        </label>
+        <input
+          id="promo-run-date"
+          type="date"
+          value={runDate}
+          disabled={disabled}
+          onChange={(e) => setRunDate(e.target.value)}
+          className="w-56 border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200"
+          style={{ borderColor: "#c8d5f0" }}
+        />
+        <p className="text-xs text-gray-400">Helps weigh industry-traction signals (older promos aren&apos;t penalized for stale data).</p>
+      </div>
     <label
       htmlFor="promo-file-input"
       className={`flex flex-col items-center justify-center gap-3 w-full border-2 border-dashed rounded-xl py-12 px-6 text-center cursor-pointer transition-all
@@ -63,5 +80,6 @@ export default function PromoUploader({ onFile, disabled }: Props) {
         onChange={onInputChange}
       />
     </label>
+    </div>
   );
 }

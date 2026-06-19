@@ -28,6 +28,7 @@ interface Props {
   displayName?: string | null;
   calibratedEffectiveness?: string | null;
   initialTraining?: TrainingData;
+  initialRunDate?: string | null;
   onScoreApplied?: () => void;
   onRename?: (newName: string) => void;
   onReanalyzed?: (sections: AnalysisSections, fkScore: FKScore | null) => void;
@@ -108,6 +109,7 @@ export default function AnalysisResults({
   displayName,
   calibratedEffectiveness,
   initialTraining,
+  initialRunDate,
   onScoreApplied,
   onRename,
   onReanalyzed,
@@ -395,6 +397,7 @@ export default function AnalysisResults({
             reviewId={reviewId ?? null}
             effectivenessContent={effectivenessContent}
             initialTraining={initialTraining}
+            initialRunDate={initialRunDate ?? null}
             onEffectivenessUpdate={setEffectivenessOverride}
             onApplied={onScoreApplied}
           />

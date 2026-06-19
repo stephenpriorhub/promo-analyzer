@@ -35,6 +35,7 @@ export interface SavedReview {
   filename: string;
   displayName?: string;
   date: string;
+  promoRunStartDate?: string | null; // approx date the promo started running (captured at upload)
   effectivenessScore: number | null;
   fkReadingEase: number | null;
   fkGradeLevel: number | null;
@@ -131,7 +132,8 @@ export function saveReview(
   filename: string,
   sections: AnalysisSections,
   fkReadingEase: number | null,
-  fkGradeLevel: number | null
+  fkGradeLevel: number | null,
+  promoRunStartDate?: string | null
 ): SavedReview {
   const reviews = readReviews();
 
@@ -144,6 +146,7 @@ export function saveReview(
     id: uuidv4(),
     filename,
     date: new Date().toISOString(),
+    promoRunStartDate: promoRunStartDate ?? null,
     effectivenessScore,
     fkReadingEase,
     fkGradeLevel,
@@ -222,6 +225,15 @@ export function updateReviewTraining(
     const m = training.calibratedEffectiveness.match(/(\d+(?:\.\d+)?)\s*\/\s*10/);
     if (m) reviews[idx].effectivenessScore = parseFloat(m[1]);
   }
+  writeReviews(reviews);
+  return true;
+}
+
+export function updateReviewRunDate(id: string, promoRunStartDate: string | null): boolean {
+  const reviews = readReviews();
+  const idx = reviews.findIndex((r) => r.id === id);
+  if (idx === -1) return false;
+  reviews[idx].promoRunStartDate = promoRunStartDate;
   writeReviews(reviews);
   return true;
 }

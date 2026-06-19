@@ -7,7 +7,7 @@ import { calculateFKScore, type FKScore } from "@/lib/fk-score";
 import { SYSTEM_PROMPT, buildCalibrationBlock } from "@/lib/build-prompt";
 import { saveReview, getTrainingExamples, updateSourceFileMeta, FILES_DIR, type AnalysisSections } from "@/lib/reviews-store";
 import { getAllLessons, buildLearningBlock } from "@/lib/learning-kb";
-import { loadBrainContext, buildBrainContextBlock, loadPublishingDirectory, buildDirectoryBlock, matchDirectoryEntities, buildDirectiveBlock, detectGuru, detectPublisher } from "@/lib/brain-reader";
+import { loadBrainContext, buildBrainContextBlock, loadPublishingDirectory, buildDirectoryBlock, matchDirectoryEntities, buildDirectiveBlock, loadMarketIntelligence, buildIndustrySignalsBlock, detectGuru, detectPublisher } from "@/lib/brain-reader";
 import { parsePromoIntel, buildIntelNote, intelNoteTitle } from "@/lib/promo-intel";
 import { getEnv } from "@/lib/env";
 
@@ -50,6 +50,8 @@ export async function POST(req: NextRequest) {
     if (!file) {
       return NextResponse.json({ error: "No file provided" }, { status: 400 });
     }
+    // Approx date the promo started running (optional) — captured at upload
+    const promoRunStartDate = (formData.get("promoRunStartDate") as string | null)?.trim() || null;
 
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
@@ -77,7 +79,9 @@ export async function POST(req: NextRequest) {
     const directoryBlock = buildDirectoryBlock(directoryText);
     // Deterministic match: code finds the guru/publication in the copy and forces attribution
     const directiveBlock = buildDirectiveBlock(matchDirectoryEntities(rawTextForDetection, directoryText));
-    const systemPrompt = SYSTEM_PROMPT + calibrationBlock + learningBlock + directoryBlock + brainContextBlock + directiveBlock;
+    // Industry signals layer (secondary) — affiliate traction + topic frequency, gated by run date
+    const industrySignalsBlock = buildIndustrySignalsBlock(promoRunStartDate, await loadMarketIntelligence());
+    const systemPrompt = SYSTEM_PROMPT + calibrationBlock + learningBlock + directoryBlock + brainContextBlock + directiveBlock + industrySignalsBlock;
 
     const isPdf = extracted.type === "pdf_raw";
 
@@ -165,7 +169,8 @@ export async function POST(req: NextRequest) {
             file.name,
             sections,
             fkScore?.readingEase ?? null,
-            fkScore?.gradeLevel ?? null
+            fkScore?.gradeLevel ?? null,
+            promoRunStartDate
           );
 
           // Save original source file to disk

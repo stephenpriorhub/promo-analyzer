@@ -13,7 +13,7 @@ import {
   type AnalysisSections,
 } from "@/lib/reviews-store";
 import { getAllLessons, buildLearningBlock } from "@/lib/learning-kb";
-import { loadBrainContext, buildBrainContextBlock, loadPublishingDirectory, buildDirectoryBlock, matchDirectoryEntities, buildDirectiveBlock } from "@/lib/brain-reader";
+import { loadBrainContext, buildBrainContextBlock, loadPublishingDirectory, buildDirectoryBlock, matchDirectoryEntities, buildDirectiveBlock, loadMarketIntelligence, buildIndustrySignalsBlock } from "@/lib/brain-reader";
 import { getEnv } from "@/lib/env";
 
 export const runtime = "nodejs";
@@ -96,7 +96,9 @@ export async function POST(req: NextRequest) {
   const directoryText = await loadPublishingDirectory();
   const directoryBlock = buildDirectoryBlock(directoryText);
   const directiveBlock = buildDirectiveBlock(matchDirectoryEntities(rawTextForDetection, directoryText));
-  const systemPrompt = SYSTEM_PROMPT + calibrationBlock + learningBlock + directoryBlock + brainContextBlock + directiveBlock;
+  // Industry signals layer (secondary), gated by this review's promo run date
+  const industrySignalsBlock = buildIndustrySignalsBlock(review.promoRunStartDate ?? null, await loadMarketIntelligence());
+  const systemPrompt = SYSTEM_PROMPT + calibrationBlock + learningBlock + directoryBlock + brainContextBlock + directiveBlock + industrySignalsBlock;
 
   let fkScore: FKScore | null = null;
   if (extracted.type === "text") {
