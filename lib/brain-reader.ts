@@ -197,6 +197,48 @@ export function buildDirectoryBlock(text: string | null): string {
   ].join("\n");
 }
 
+/**
+ * Load the industry-signals files (affiliate send-frequency + cross-publisher
+ * topic-frequency) maintained in the brain by the hourly Brain Master. GitHub
+ * Contents API first, local fallback. Returns combined markdown or null.
+ */
+export async function loadMarketIntelligence(): Promise<string | null> {
+  const [aff, topics] = await Promise.all([
+    readVaultFile(
+      "Resources/Market Intelligence/MarketBeat Send Frequency.md",
+      path.join(RESOURCES, "Market Intelligence", "MarketBeat Send Frequency.md")
+    ),
+    readVaultFile(
+      "Resources/Market Intelligence/Topic Frequency Trends.md",
+      path.join(RESOURCES, "Market Intelligence", "Topic Frequency Trends.md")
+    ),
+  ]);
+  const parts = [aff, topics].filter((p): p is string => !!p && p.trim().length > 0);
+  return parts.length ? parts.join("\n\n") : null;
+}
+
+/**
+ * Build the Industry Signals Layer — an explicitly SECONDARY scoring layer.
+ * Copy quality stays primary; signals are a probability factor only, and the
+ * promo's run date gates how relevant the (possibly newer) signal data is.
+ */
+export function buildIndustrySignalsBlock(
+  promoRunStartDate: string | null | undefined,
+  marketIntelText: string | null
+): string {
+  if (!marketIntelText || !marketIntelText.trim()) return "";
+  const dateLine = promoRunStartDate
+    ? `This promo started running approximately on ${promoRunStartDate}. Judge the signals' relevance against that date: if the data is much more recent and shows no current activity for this promo's offer, that is NOT evidence of failure — the campaign may simply have ended. Conversely, signals from around the run date are most relevant.`
+    : `No promo run date was provided — treat these signals as current-context only; do not assume this promo is recent.`;
+  return [
+    "\n\n## Industry Signals Layer — SECONDARY (must NOT override copy quality)",
+    "Real-world industry signals: what affiliate marketers (e.g. MarketBeat) are mailing and how often, and which topics many publishers are pushing. These reflect what is getting traction in the market.",
+    dateLine,
+    "HOW TO USE: Copy quality and strategy remain the PRIMARY driver of the effectiveness score and must not be overridden by these signals. Use them ONLY as a secondary probability factor — repeated affiliate lifts of the same offer over multiple weeks indicate it is working; many publishers pushing a topic indicates rising interest (a tailwind ONLY IF the copy is strong). Use signals to inform your confidence and to help explain gaps between predicted and actual performance — never to inflate or deflate the core copy-based score on their own.",
+    stripObsidianMarkup(marketIntelText),
+  ].join("\n");
+}
+
 export interface DirectoryEntry {
   guru: string;
   publication: string;

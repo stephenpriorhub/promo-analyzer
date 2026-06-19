@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAllReviews, deleteReview, renameReview, updateReviewTraining, getReviewById } from "@/lib/reviews-store";
+import { getAllReviews, deleteReview, renameReview, updateReviewTraining, updateReviewRunDate, getReviewById } from "@/lib/reviews-store";
 import { detectGuru, detectPublisher } from "@/lib/brain-reader";
 import { extractAndStoreLessons } from "@/lib/extract-lessons";
 
@@ -26,7 +26,7 @@ export async function DELETE(req: NextRequest) {
 
 export async function PATCH(req: NextRequest) {
   const body = await req.json();
-  const { id, displayName, training, effectiveness } = body;
+  const { id, displayName, training, effectiveness, promoRunStartDate } = body;
 
   if (!id) {
     return NextResponse.json({ error: "id required" }, { status: 400 });
@@ -34,6 +34,11 @@ export async function PATCH(req: NextRequest) {
 
   if (displayName !== undefined) {
     const ok = renameReview(id, displayName ?? "");
+    if (!ok) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
+  if (promoRunStartDate !== undefined) {
+    const ok = updateReviewRunDate(id, promoRunStartDate || null);
     if (!ok) return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 

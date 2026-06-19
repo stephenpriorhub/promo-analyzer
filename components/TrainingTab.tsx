@@ -12,6 +12,7 @@ interface Props {
   reviewId: string | null;
   effectivenessContent: string;
   initialTraining?: TrainingData;
+  initialRunDate?: string | null;
   onEffectivenessUpdate: (newText: string) => void;
   onApplied?: () => void;
 }
@@ -83,9 +84,12 @@ export default function TrainingTab({
   reviewId,
   effectivenessContent,
   initialTraining,
+  initialRunDate,
   onEffectivenessUpdate,
   onApplied,
 }: Props) {
+  const [runDate, setRunDate] = useState(initialRunDate ?? "");
+  const [runDateSaved, setRunDateSaved] = useState(false);
   const [promoType, setPromoType] = useState<PromoType | null>(
     initialTraining?.promoType ?? null
   );
@@ -174,6 +178,18 @@ export default function TrainingTab({
 
   const reevalScore = reevalResult ? extractScore(reevalResult) : null;
 
+  async function saveRunDate(value: string) {
+    setRunDate(value);
+    setRunDateSaved(false);
+    if (!reviewId) return;
+    await fetch("/api/reviews", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: reviewId, promoRunStartDate: value || null }),
+    });
+    setRunDateSaved(true);
+  }
+
   return (
     <div className="space-y-7 max-w-2xl">
       {/* Header */}
@@ -184,6 +200,23 @@ export default function TrainingTab({
         <p className="text-xs text-gray-400 mt-0.5">
           Score this promo based on actual results to calibrate future analyses.
           Performance score is weighted ~70%, your assessment ~30%.
+        </p>
+      </div>
+
+      {/* Promo run date */}
+      <div>
+        <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color: NAVY }}>
+          Approx. date promo started running
+        </label>
+        <input
+          type="date"
+          value={runDate}
+          onChange={(e) => saveRunDate(e.target.value)}
+          className="w-56 border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200"
+          style={{ borderColor: NAVY_BORDER }}
+        />
+        <p className="text-xs text-gray-400 mt-1">
+          Used to weigh industry-traction signals. {runDateSaved && <span className="text-green-600">Saved</span>}
         </p>
       </div>
 

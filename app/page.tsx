@@ -90,7 +90,7 @@ export default function Home() {
       });
   }, []);
 
-  const handleFile = useCallback((file: File) => {
+  const handleFile = useCallback((file: File, promoRunStartDate: string | null = null) => {
     const id = crypto.randomUUID();
     const job: Job = {
       id,
@@ -112,6 +112,7 @@ export default function Home() {
       try {
         const formData = new FormData();
         formData.append("file", file);
+        if (promoRunStartDate) formData.append("promoRunStartDate", promoRunStartDate);
         const res = await fetch("/api/analyze", { method: "POST", body: formData });
         if (!res.ok || !res.body) {
           const err = await res.json().catch(() => ({ error: "Unknown error" }));
@@ -229,6 +230,7 @@ export default function Home() {
   const displayReviewId: string | null = activeJob?.reviewId ?? activeReview?.id ?? null;
   const displayInitialTraining: TrainingData | undefined = activeReview?.training ?? undefined;
   const displayNameProp: string | null = activeReview?.displayName ?? null;
+  const displayRunDate: string | null = activeReview?.promoRunStartDate ?? null;
   const displayCalibratedEffectiveness: string | null =
     activeReview?.training?.calibratedEffectiveness ?? null;
 
@@ -372,6 +374,7 @@ export default function Home() {
                 displayName={displayNameProp}
                 calibratedEffectiveness={displayCalibratedEffectiveness}
                 initialTraining={displayInitialTraining}
+                initialRunDate={displayRunDate}
                 onScoreApplied={() => setRefreshReviews((n) => n + 1)}
                 onReanalyzed={handleReanalyzed}
                 onRename={(newName) => {
