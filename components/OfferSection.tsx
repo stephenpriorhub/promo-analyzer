@@ -167,24 +167,27 @@ const KNOWN_FIELDS = [
   "What it is",
   "Price",
   "Payment options",
-  "Bonuses",
+  "Premiums",
   "Guarantee",
   "Urgency",
 ];
 
-function matchKnownField(label: string): string | null {
-  const l = label.toLowerCase();
+// Match a label to a known field. Strips a trailing parenthetical (so "Price(s)"
+// and "Payment options (annual, etc.)" still match) and requires an exact match
+// first to avoid false positives from bonus/premium titles that merely start
+// with a field word. "Bonuses" is mapped to the renamed "Premiums".
+function matchKnownField(rawLabel: string): string | null {
+  const cleaned = rawLabel.replace(/\s*\([^)]*\)\s*$/, "").trim().toLowerCase();
+  if (!cleaned) return null;
   for (const f of KNOWN_FIELDS) {
-    const fl = f.toLowerCase();
-    if (l === fl || l.startsWith(fl)) return f;
+    if (cleaned === f.toLowerCase()) return f;
   }
-  // tolerate prompt variants
-  if (l.startsWith("price")) return "Price";
-  if (l.startsWith("payment")) return "Payment options";
-  if (l.startsWith("any urgency") || l.includes("urgency") || l.includes("scarcity"))
-    return "Urgency";
-  if (l.startsWith("product")) return "Product name";
-  if (l.startsWith("what it is")) return "What it is";
+  if (cleaned === "bonuses" || cleaned === "premiums") return "Premiums";
+  if (cleaned.startsWith("price")) return "Price";
+  if (cleaned.startsWith("payment")) return "Payment options";
+  if (cleaned.includes("urgency") || cleaned.includes("scarcity")) return "Urgency";
+  if (cleaned.startsWith("product")) return "Product name";
+  if (cleaned === "what it is") return "What it is";
   return null;
 }
 
@@ -208,16 +211,24 @@ function parseOfferFields(content: string): { bigIdea: string; fields: OfferFiel
   let current: OfferField | null = null;
 
   for (const line of lines) {
-    const parsed = parseLine(line);
-    const known = parsed ? matchKnownField(parsed.label) : null;
+    // Detect a known-field header directly (don't use parseLine here — it rejects
+    // header-only fields like "Bonuses:" and parenthetical labels like "Price(s)").
+    const hdr = renderMarkdown(line.replace(/^\s*[-•*]\s*/, ""));
+    const colonIdx = hdr.indexOf(":");
+    let known: string | null = null;
+    let inlineValue = "";
+    if (colonIdx !== -1 && colonIdx <= 45) {
+      known = matchKnownField(hdr.slice(0, colonIdx));
+      inlineValue = hdr.slice(colonIdx + 1).trim();
+    }
 
-    if (parsed && known) {
+    if (known) {
       if (known === "Big Idea") {
-        bigIdea = parsed.value;
+        bigIdea = inlineValue;
         current = null;
         continue;
       }
-      current = { label: known, value: parsed.value, bullets: [] };
+      current = { label: known, value: inlineValue, bullets: [] };
       fields.push(current);
       continue;
     }

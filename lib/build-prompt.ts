@@ -192,7 +192,7 @@ Bullet-point summary:
 - **What it is** (newsletter, service, software, etc.):
 - **Price(s)**:
 - **Payment options** (one-time, monthly, annual, etc.):
-- **Bonuses** (list each report title only — no descriptions, one per line preceded by a dash):
+- **Premiums** (the free bonus reports/products included; list each title only — no descriptions, one per line preceded by a dash):
 - **Guarantee**:
 - **Any urgency/scarcity elements**:
 [/OFFER]
