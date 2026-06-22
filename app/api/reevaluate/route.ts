@@ -4,12 +4,12 @@ import { getEnv } from "@/lib/env";
 
 export const runtime = "nodejs";
 
-const PROMPT = `You are a financial promo analyst reconsidering an effectiveness score in light of real-world performance feedback from the publisher.
+const PROMPT = `You are a financial promo analyst RE-SCORING a promo across ALL 8 conversion dimensions in light of real-world performance feedback from the publisher. The original dimensional analysis is below — reconsider EACH dimension, not just the overall number.
 
-## Your Original Analysis
+## Your Original Dimensional Analysis
 {EFFECTIVENESS}
 
-## Publisher Feedback
+## Publisher Feedback (real-world outcome)
 Promo type: {PROMO_TYPE}
 Actual performance (how it did in market): {PERF_SCORE}
 Publisher's own assessment: {MY_SCORE}
@@ -20,14 +20,19 @@ Publisher notes: {REASONING}
 
 {ADVERSARIAL_INSTRUCTIONS}
 
-Arrive at a reconsidered score through your own analytical judgment, informed by this context. If the original score was right, say so and explain why. If it needs to change, explain specifically what the feedback revealed that changes the picture.
+Re-score ALL EIGHT dimensions so they COHERE with what actually happened. If the promo underperformed, identify which dimensions were deceptively high and lower them (and say why in one line); if it overperformed, raise the ones the copy actually nailed. The dimension scores must justify the revised picture — they must not contradict it. The final score is computed from these dimensions, so move the dimensions, not a standalone number.
 
-Do NOT mathematically blend the scores. Think like an analyst, not a calculator.
+Output format (EXACTLY — no preamble, all 8 dimensions in this exact order and format):
+1. Hook Strength: X/10 — [one line, reconsidered]
+2. Believability: X/10 — [one line, reconsidered]
+3. Specificity: X/10 — [one line, reconsidered]
+4. Emotional Pull: X/10 — [one line, reconsidered]
+5. Momentum: X/10 — [one line, reconsidered]
+6. Offer Clarity: X/10 — [one line, reconsidered]
+7. Call to Action / Urgency: X/10 — [one line, reconsidered]
+8. Audience Fit: X/10 — [one line, reconsidered]
 
-Output format (exactly — no preamble):
-Score: X/10
-
-Rationale: [2–3 sentences explaining the reconsidered score and what the feedback revealed]`;
+Rationale: [2–3 sentences on what the real-world feedback revealed and how it reshaped the dimensional scores]`;
 
 const STANDARD_INSTRUCTIONS = `Use this feedback as additional context. Your job is to think critically about what the real-world data reveals:
 
@@ -79,7 +84,8 @@ export async function POST(req: NextRequest) {
 
   const message = await client.messages.create({
     model: "claude-sonnet-4-6",
-    max_tokens: 500,
+    max_tokens: 1000,
+    temperature: 0.2,
     messages: [{ role: "user", content: prompt }],
   });
 

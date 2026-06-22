@@ -41,6 +41,7 @@ export interface SavedReview {
   date: string;
   promoRunStartDate?: string | null; // approx date the promo started running (captured at upload)
   effectivenessScore: number | null;
+  predictedScore?: number | null; // original copy-derived prediction (calibration baseline; NOT overwritten by training re-evaluation)
   subScores?: SubScore[];
   inputType?: InputType;
   fkReadingEase: number | null;
@@ -177,11 +178,13 @@ export function getCalibrationStats(): CalibrationStats {
   const rows = readReviews()
     .filter(
       (r) =>
-        r.effectivenessScore != null &&
+        (r.predictedScore ?? r.effectivenessScore) != null &&
         r.training?.performanceScore != null
     )
     .map((r) => ({
-      predicted: r.effectivenessScore as number,
+      // Use the original copy-based prediction as the calibration baseline so a
+      // hindsight re-evaluation can't make predicted≈actual and inflate accuracy.
+      predicted: (r.predictedScore ?? r.effectivenessScore) as number,
       actual: r.training!.performanceScore as number,
       promoType: r.training!.promoType ?? "Unspecified",
       guru:
@@ -298,6 +301,7 @@ export function saveReview(
     date: new Date().toISOString(),
     promoRunStartDate: promoRunStartDate ?? null,
     effectivenessScore: finalScore,
+    predictedScore: finalScore, // calibration baseline — the model's copy-based prediction
     subScores: subScores.length > 0 ? subScores : undefined,
     inputType,
     fkReadingEase,
@@ -372,10 +376,20 @@ export function updateReviewTraining(
   const idx = reviews.findIndex((r) => r.id === id);
   if (idx === -1) return false;
   reviews[idx].training = training;
-  // Update sidebar score to calibrated when training feedback is applied
+  // When a re-evaluation is applied, it now regenerates the full 8-dimension
+  // breakdown. Derive the displayed sub-scores + final from it so the breakdown
+  // and the headline stay coherent. Do NOT touch predictedScore — that's the
+  // copy-based calibration baseline.
   if (training.calibratedEffectiveness) {
-    const m = training.calibratedEffectiveness.match(/(\d+(?:\.\d+)?)\s*\/\s*10/);
-    if (m) reviews[idx].effectivenessScore = parseFloat(m[1]);
+    const { subScores, finalScore } = deriveScore(training.calibratedEffectiveness);
+    if (subScores.length > 0) reviews[idx].subScores = subScores;
+    if (finalScore != null) {
+      reviews[idx].effectivenessScore = finalScore;
+    } else {
+      // Legacy calibrated text with only a "Score: X/10" line — fall back to it.
+      const m = training.calibratedEffectiveness.match(/(\d+(?:\.\d+)?)\s*\/\s*10/);
+      if (m) reviews[idx].effectivenessScore = parseFloat(m[1]);
+    }
   }
   writeReviews(reviews);
   return true;
@@ -418,6 +432,7 @@ export function updateReviewSections(
   reviews[idx].fkGradeLevel = fkGradeLevel;
   const { subScores, finalScore } = deriveScore(sections.effectiveness);
   reviews[idx].effectivenessScore = finalScore;
+  reviews[idx].predictedScore = finalScore; // re-analysis is a fresh copy-based prediction → refresh the calibration baseline
   reviews[idx].subScores = subScores.length > 0 ? subScores : undefined;
   // Clear any previously calibrated effectiveness — it was based on the old scoring
   if (reviews[idx].training?.calibratedEffectiveness) {

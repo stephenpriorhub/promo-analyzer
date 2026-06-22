@@ -1,6 +1,7 @@
 "use client";
 
 import type { SubScore } from "@/lib/score";
+import { deriveScore } from "@/lib/score";
 
 interface Props {
   content: string;
@@ -77,20 +78,34 @@ function EffectivenessBlock({
   subScores?: SubScore[] | null;
   finalScore?: number | null;
 }) {
+  const isCalibrated = !!(calibratedEffectiveness && calibratedEffectiveness.trim());
   const activeContent = renderMarkdown(calibratedEffectiveness ?? effectiveness);
 
-  // Prefer persisted sub-scores when present; fall back to parsing the text.
-  const dimensions =
-    subScores && subScores.length > 0
-      ? subScores.map((s) => ({ label: s.dimension, score: s.score, rationale: s.rationale }))
-      : extractDimensions(activeContent);
-
-  // Final score: prefer the persisted (code-derived) value; else parse the text.
+  // When a re-evaluation (calibrated) is present, derive BOTH the dimensions and
+  // the headline FROM the calibrated breakdown so they stay coherent — never mix
+  // re-evaluated headline with original sub-scores. Otherwise prefer the persisted
+  // (code-derived) sub-scores from the original analysis.
   const scoreMatch =
     activeContent.match(/Score:\s*(\d+(?:\.\d+)?)\s*\/\s*10/i) ??
     activeContent.match(/(\d+(?:\.\d+)?)\s*\/\s*10\s*$/);
-  const finalScore =
-    finalScoreProp != null ? finalScoreProp : scoreMatch ? parseFloat(scoreMatch[1]) : null;
+
+  let dimensions: { label: string; score: number; rationale: string }[];
+  let finalScore: number | null;
+  if (isCalibrated) {
+    const d = deriveScore(calibratedEffectiveness!);
+    dimensions =
+      d.subScores.length > 0
+        ? d.subScores.map((s) => ({ label: s.dimension, score: s.score, rationale: s.rationale }))
+        : extractDimensions(activeContent);
+    finalScore = d.finalScore ?? (scoreMatch ? parseFloat(scoreMatch[1]) : null);
+  } else {
+    dimensions =
+      subScores && subScores.length > 0
+        ? subScores.map((s) => ({ label: s.dimension, score: s.score, rationale: s.rationale }))
+        : extractDimensions(activeContent);
+    finalScore =
+      finalScoreProp != null ? finalScoreProp : scoreMatch ? parseFloat(scoreMatch[1]) : null;
+  }
 
   // Rationale: everything after "Rationale:" if present, else the tail after the dimensions
   let rationale = "";
