@@ -4,7 +4,7 @@ import fs from "fs";
 import path from "path";
 import { extractFile } from "@/lib/extract-text";
 import { calculateFKScore, type FKScore } from "@/lib/fk-score";
-import { SYSTEM_PROMPT, buildCalibrationBlock } from "@/lib/build-prompt";
+import { SYSTEM_PROMPT, buildCalibrationBlock, buildModalityBlock } from "@/lib/build-prompt";
 import { saveReview, getTrainingExamples, updateSourceFileMeta, FILES_DIR, type AnalysisSections } from "@/lib/reviews-store";
 import { getAllLessons, buildLearningBlock } from "@/lib/learning-kb";
 import { loadBrainContext, buildBrainContextBlock, loadPublishingDirectory, buildDirectoryBlock, matchDirectoryEntities, buildDirectiveBlock, loadMarketIntelligence, buildIndustrySignalsBlock, detectGuru, detectPublisher } from "@/lib/brain-reader";
@@ -36,13 +36,10 @@ export async function POST(req: NextRequest) {
   const client = new Anthropic({ apiKey: getEnv("ANTHROPIC_API_KEY") });
   let uploadedFileId: string | null = null;
 
-  // Build calibration block from past reviews with training data (tiered: gold vs. standard)
+  // Calibration + learning blocks are built later, after we detect the guru so
+  // we can target the most relevant examples/lessons (reduces prompt bloat).
   const trainingExamples = getTrainingExamples();
-  const calibrationBlock = buildCalibrationBlock(trainingExamples);
-
-  // Build learning KB block (generalizable lessons that survive delete/re-upload)
   const lessons = getAllLessons();
-  const learningBlock = buildLearningBlock(lessons);
 
   try {
     const formData = await req.formData();
@@ -56,6 +53,13 @@ export async function POST(req: NextRequest) {
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
     const extracted = await extractFile(buffer, file.name);
+
+    // Input modality: a PDF goes through vision (rendered visuals are observable);
+    // .docx and text-extracted PDFs are text-only (no visual design to credit).
+    const isDocx = file.name.toLowerCase().endsWith(".docx");
+    const inputType: "visual-pdf" | "docx" | "text" =
+      extracted.type === "pdf_raw" ? "visual-pdf" : isDocx ? "docx" : "text";
+    const isTextOnly = inputType !== "visual-pdf";
 
     // FK score from text when available
     let fkScore: FKScore | null = null;
@@ -81,7 +85,16 @@ export async function POST(req: NextRequest) {
     const directiveBlock = buildDirectiveBlock(matchDirectoryEntities(rawTextForDetection, directoryText));
     // Industry signals layer (secondary) — affiliate traction + topic frequency, gated by run date
     const industrySignalsBlock = buildIndustrySignalsBlock(promoRunStartDate, await loadMarketIntelligence());
-    const systemPrompt = SYSTEM_PROMPT + calibrationBlock + learningBlock + directoryBlock + brainContextBlock + directiveBlock + industrySignalsBlock;
+
+    // Targeted injection: select the most relevant calibration examples + lessons
+    // by detected guru/publisher (promoType is unknown pre-analysis).
+    const detectedGuru = detectGuru(rawTextForDetection) ?? null;
+    const detectedPublisher = detectPublisher(rawTextForDetection) ?? null;
+    const selectionCtx = { guru: detectedGuru, promoType: null, topics: [detectedPublisher].filter((t): t is string => !!t) };
+    const calibrationBlock = buildCalibrationBlock(trainingExamples, selectionCtx);
+    const learningBlock = buildLearningBlock(lessons, selectionCtx);
+
+    const systemPrompt = SYSTEM_PROMPT + calibrationBlock + learningBlock + directoryBlock + brainContextBlock + directiveBlock + industrySignalsBlock + buildModalityBlock(isTextOnly);
 
     const isPdf = extracted.type === "pdf_raw";
 
@@ -114,6 +127,7 @@ export async function POST(req: NextRequest) {
             anthropicStream = await client.beta.messages.stream({
               model: "claude-sonnet-4-6",
               max_tokens: 16000,
+              temperature: 0.2,
               system: systemPrompt,
               betas: ["files-api-2025-04-14"],
               messages: [
@@ -136,6 +150,7 @@ export async function POST(req: NextRequest) {
             anthropicStream = await client.messages.stream({
               model: "claude-sonnet-4-6",
               max_tokens: 16000,
+              temperature: 0.2,
               system: systemPrompt,
               messages: [
                 {
@@ -170,7 +185,8 @@ export async function POST(req: NextRequest) {
             sections,
             fkScore?.readingEase ?? null,
             fkScore?.gradeLevel ?? null,
-            promoRunStartDate
+            promoRunStartDate,
+            inputType
           );
 
           // Save original source file to disk

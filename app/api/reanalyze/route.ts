@@ -4,16 +4,17 @@ import fs from "fs";
 import path from "path";
 import { extractFile } from "@/lib/extract-text";
 import { calculateFKScore, type FKScore } from "@/lib/fk-score";
-import { SYSTEM_PROMPT, buildCalibrationBlock } from "@/lib/build-prompt";
+import { SYSTEM_PROMPT, buildCalibrationBlock, buildModalityBlock } from "@/lib/build-prompt";
 import {
   getReviewById,
   updateReviewSections,
+  updateReviewInputType,
   getTrainingExamples,
   FILES_DIR,
   type AnalysisSections,
 } from "@/lib/reviews-store";
 import { getAllLessons, buildLearningBlock } from "@/lib/learning-kb";
-import { loadBrainContext, buildBrainContextBlock, loadPublishingDirectory, buildDirectoryBlock, matchDirectoryEntities, buildDirectiveBlock, loadMarketIntelligence, buildIndustrySignalsBlock } from "@/lib/brain-reader";
+import { loadBrainContext, buildBrainContextBlock, loadPublishingDirectory, buildDirectoryBlock, matchDirectoryEntities, buildDirectiveBlock, loadMarketIntelligence, buildIndustrySignalsBlock, detectGuru, detectPublisher } from "@/lib/brain-reader";
 import { getEnv } from "@/lib/env";
 
 export const runtime = "nodejs";
@@ -76,11 +77,6 @@ export async function POST(req: NextRequest) {
   const trainingExamples = getTrainingExamples().filter(
     (ex) => (review.displayName ?? review.filename.replace(/\.[^.]+$/, "")) !== ex.name
   );
-  const calibrationBlock = buildCalibrationBlock(trainingExamples);
-
-  // Learning KB lessons survive delete/re-upload and inform every analysis
-  const learningBlock = buildLearningBlock(getAllLessons());
-
   let uploadedFileId: string | null = null;
 
   const extracted = await extractFile(buffer, originalFilename);
@@ -98,7 +94,26 @@ export async function POST(req: NextRequest) {
   const directiveBlock = buildDirectiveBlock(matchDirectoryEntities(rawTextForDetection, directoryText));
   // Industry signals layer (secondary), gated by this review's promo run date
   const industrySignalsBlock = buildIndustrySignalsBlock(review.promoRunStartDate ?? null, await loadMarketIntelligence());
-  const systemPrompt = SYSTEM_PROMPT + calibrationBlock + learningBlock + directoryBlock + brainContextBlock + directiveBlock + industrySignalsBlock;
+
+  // Input modality (recomputed from the stored source file)
+  const isDocx = originalFilename.toLowerCase().endsWith(".docx");
+  const inputType: "visual-pdf" | "docx" | "text" =
+    extracted.type === "pdf_raw" ? "visual-pdf" : isDocx ? "docx" : "text";
+  const isTextOnly = inputType !== "visual-pdf";
+
+  // Targeted injection: select the most relevant calibration examples + lessons
+  // by detected guru/publisher and this review's known promoType.
+  const detectedGuru = detectGuru(rawTextForDetection) ?? null;
+  const detectedPublisher = detectPublisher(rawTextForDetection) ?? null;
+  const selectionCtx = {
+    guru: detectedGuru,
+    promoType: review.training?.promoType ?? null,
+    topics: [detectedPublisher].filter((t): t is string => !!t),
+  };
+  const calibrationBlock = buildCalibrationBlock(trainingExamples, selectionCtx);
+  const learningBlock = buildLearningBlock(getAllLessons(), selectionCtx);
+
+  const systemPrompt = SYSTEM_PROMPT + calibrationBlock + learningBlock + directoryBlock + brainContextBlock + directiveBlock + industrySignalsBlock + buildModalityBlock(isTextOnly);
 
   let fkScore: FKScore | null = null;
   if (extracted.type === "text") {
@@ -136,6 +151,7 @@ export async function POST(req: NextRequest) {
           anthropicStream = await client.beta.messages.stream({
             model: "claude-sonnet-4-6",
             max_tokens: 16000,
+            temperature: 0.2,
             system: systemPrompt,
             betas: ["files-api-2025-04-14"],
             messages: [
@@ -156,6 +172,7 @@ export async function POST(req: NextRequest) {
           anthropicStream = await client.messages.stream({
             model: "claude-sonnet-4-6",
             max_tokens: 16000,
+            temperature: 0.2,
             system: systemPrompt,
             messages: [
               {
@@ -189,6 +206,7 @@ export async function POST(req: NextRequest) {
           fkScore?.readingEase ?? null,
           fkScore?.gradeLevel ?? null
         );
+        updateReviewInputType(reviewId, inputType);
 
         const meta = JSON.stringify({ __meta: true, reviewId, fkScore });
         controller.enqueue(encoder.encode(`\n[META]${meta}[/META]`));

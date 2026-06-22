@@ -8,6 +8,7 @@ import LessonsTab from "@/components/LessonsTab";
 import type { AnalysisSections, SavedReview, TrainingData } from "@/lib/reviews-store";
 import type { FKScore } from "@/lib/fk-score";
 import { readingEaseLabel } from "@/lib/fk-score";
+import { deriveScore, type SubScore } from "@/lib/score";
 
 const NAVY = "#012479";
 
@@ -49,10 +50,6 @@ function extractMetaFromStream(text: string): { fkScore: FKScore | null; reviewI
   }
 }
 
-function extractScore(effectiveness: string): number | null {
-  const m = effectiveness.match(/(\d+(?:\.\d+)?)\s*\/\s*10/);
-  return m ? parseFloat(m[1]) : null;
-}
 
 interface Job {
   id: string;
@@ -223,9 +220,15 @@ export default function Home() {
   const displayStreaming = activeJob?.streaming ?? false;
   const displayError = activeJob?.error ?? null;
 
-  const effectivenessScore = displaySections?.effectiveness
-    ? extractScore(displaySections.effectiveness)
-    : null;
+  // Derive final score + sub-scores in code from the effectiveness text. For a
+  // saved review we prefer the persisted values; for a live job we compute them.
+  const derived = displaySections?.effectiveness
+    ? deriveScore(displaySections.effectiveness)
+    : { subScores: [] as SubScore[], finalScore: null };
+  const effectivenessScore = activeReview?.effectivenessScore ?? derived.finalScore;
+  const subScores: SubScore[] | null =
+    activeReview?.subScores ?? (derived.subScores.length > 0 ? derived.subScores : null);
+  const inputType = activeReview?.inputType ?? null;
 
   const displayReviewId: string | null = activeJob?.reviewId ?? activeReview?.id ?? null;
   const displayInitialTraining: TrainingData | undefined = activeReview?.training ?? undefined;
@@ -369,6 +372,8 @@ export default function Home() {
                 sections={displaySections}
                 fkScore={displayFkScore}
                 effectivenessScore={effectivenessScore}
+                subScores={subScores}
+                inputType={inputType}
                 streaming={displayStreaming}
                 reviewId={displayReviewId}
                 displayName={displayNameProp}

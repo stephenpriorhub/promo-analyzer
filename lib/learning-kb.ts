@@ -137,14 +137,68 @@ export function clearAllLessons(): void {
 }
 
 /**
+ * Context used to target which lessons/examples are most relevant to the promo
+ * currently being analyzed. Used to avoid dumping the entire library into every
+ * prompt (which bloats tokens and dilutes the signal).
+ */
+export interface SelectionContext {
+  guru?: string | null;
+  promoType?: string | null;
+  topics?: string[];
+}
+
+const STANDARD_LESSON_CAP = 18;
+
+function norm(s: string | null | undefined): string {
+  return (s ?? "").toLowerCase().trim();
+}
+
+/**
+ * Relevance score for a lesson given the current promo context. Higher = more
+ * relevant. Gold-standard lessons are always included regardless of score, so
+ * this only ranks the standard pool. A lesson with no metadata constraints
+ * (universal) gets a small base score so universal lessons aren't starved out.
+ */
+function lessonRelevance(l: Lesson, ctx: SelectionContext): number {
+  let score = 0;
+  const g = norm(ctx.guru);
+  const pt = norm(ctx.promoType);
+  const topics = (ctx.topics ?? []).map(norm).filter(Boolean);
+
+  if (g && norm(l.guru) === g) score += 5;
+  if (pt && norm(l.promoType) === pt) score += 3;
+  if (topics.length) {
+    const hay = `${norm(l.lesson)} ${norm(l.publisherReasoning)}`;
+    if (topics.some((t) => t && hay.includes(t))) score += 2;
+  }
+  // Universal lessons (no guru/promoType binding) are broadly applicable.
+  if (!l.guru && !l.promoType) score += 1;
+  // Evidence depth as a mild tiebreaker.
+  score += Math.min(l.evidenceCount, 5) * 0.1;
+  return score;
+}
+
+/**
  * Build the learning block injected into the system prompt.
  * Groups lessons by category and highlights high-confidence anchors.
+ *
+ * When `ctx` is provided, the STANDARD (non-gold) lessons are ranked by
+ * relevance to the current promo (guru / promoType / topics) and capped, to
+ * reduce prompt bloat. Gold-standard lessons are ALWAYS included in full.
  */
-export function buildLearningBlock(lessons: Lesson[]): string {
+export function buildLearningBlock(lessons: Lesson[], ctx?: SelectionContext): string {
   if (lessons.length === 0) return "";
 
   const highConfidence = lessons.filter((l) => l.isGoldStandard);
-  const standard = lessons.filter((l) => !l.isGoldStandard);
+  let standard = lessons.filter((l) => !l.isGoldStandard);
+
+  if (ctx && standard.length > STANDARD_LESSON_CAP) {
+    standard = [...standard]
+      .map((l) => ({ l, r: lessonRelevance(l, ctx) }))
+      .sort((a, b) => b.r - a.r)
+      .slice(0, STANDARD_LESSON_CAP)
+      .map((x) => x.l);
+  }
 
   const lines: string[] = [];
 
