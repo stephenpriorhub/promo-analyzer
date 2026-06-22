@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import type { AnalysisSections, TrainingData } from "@/lib/reviews-store";
+import type { AnalysisSections, TrainingData, InputType } from "@/lib/reviews-store";
+import type { SubScore } from "@/lib/score";
 import type { FKScore } from "@/lib/fk-score";
 import ScoreBadges from "./ScoreBadges";
 import HeadlineSection from "./HeadlineSection";
@@ -23,6 +24,8 @@ interface Props {
   sections: AnalysisSections;
   fkScore: FKScore | null;
   effectivenessScore: number | null;
+  subScores?: SubScore[] | null;
+  inputType?: InputType | null;
   streaming?: boolean;
   reviewId?: string | null;
   displayName?: string | null;
@@ -99,11 +102,19 @@ function ProgressBar({ sections, streaming, pct }: { sections: AnalysisSections;
   );
 }
 
+const INPUT_TYPE_LABELS: Record<string, string> = {
+  "visual-pdf": "Visual PDF",
+  docx: "Word (text)",
+  text: "Text",
+};
+
 export default function AnalysisResults({
   filename,
   sections,
   fkScore,
   effectivenessScore,
+  subScores,
+  inputType,
   streaming,
   reviewId,
   displayName,
@@ -135,9 +146,14 @@ export default function AnalysisResults({
   }, [reviewId, filename, displayName, calibratedEffectiveness]);
 
   const effectivenessContent = effectivenessOverride ?? sections.effectiveness;
+  // Final score is the code-derived value passed in (effectivenessScore). When a
+  // calibrated override is shown, fall back to parsing its score marker.
   const derivedEffectivenessScore = (() => {
-    const m = effectivenessContent.match(/(\d+(?:\.\d+)?)\s*\/\s*10/);
-    return m ? parseFloat(m[1]) : effectivenessScore;
+    if (effectivenessOverride) {
+      const m = effectivenessOverride.match(/(\d+(?:\.\d+)?)\s*\/\s*10/);
+      if (m) return parseFloat(m[1]);
+    }
+    return effectivenessScore;
   })();
 
   const completed = STEPS.filter((s) => sections[s.key] !== "").length;
@@ -291,7 +307,18 @@ export default function AnalysisResults({
               )}
             </div>
           )}
-          <ScoreBadges fkScore={fkScore} effectivenessScore={derivedEffectivenessScore} />
+          <div className="flex items-center gap-2 flex-wrap">
+            <ScoreBadges fkScore={fkScore} effectivenessScore={derivedEffectivenessScore} />
+            {inputType && (
+              <span
+                className="text-xs font-medium px-2 py-0.5 rounded-full"
+                style={{ background: NAVY_BG, color: NAVY, border: `1px solid ${NAVY_BORDER}` }}
+                title="Input modality this promo was analyzed from"
+              >
+                {INPUT_TYPE_LABELS[inputType] ?? inputType}
+              </span>
+            )}
+          </div>
         </div>
         {!streaming && (
           <div className="flex items-center gap-2 shrink-0 flex-wrap">
@@ -386,6 +413,8 @@ export default function AnalysisResults({
             stockTease={sections.stockTease}
             effectiveness={sections.effectiveness}
             calibratedEffectiveness={effectivenessOverride !== null ? effectivenessOverride : null}
+            subScores={subScores ?? null}
+            finalScore={effectivenessOverride ? null : effectivenessScore}
           />
         )}
         {activeTab === "documents" && (

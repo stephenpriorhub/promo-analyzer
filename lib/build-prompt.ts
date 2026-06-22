@@ -3,26 +3,62 @@
  * Promos with strong publisher context (9-10 performers or flagged to weight
  * heavily) are separated into a high-confidence anchor section.
  */
+export interface CalibrationSelectionContext {
+  guru?: string | null;
+  promoType?: string | null;
+  topics?: string[];
+}
+
+const STANDARD_EXAMPLE_CAP = 12;
+
+type CalibrationExample = {
+  name: string;
+  guru?: string | null;
+  promoType?: string | null;
+  predictedScore: number | null;
+  performanceScore: number | null;
+  myScore: number | null;
+  reasoning: string;
+  bigIdea: string;
+  isBestPerformer?: boolean;
+};
+
+function exampleRelevance(ex: CalibrationExample, ctx: CalibrationSelectionContext): number {
+  const n = (s: string | null | undefined) => (s ?? "").toLowerCase().trim();
+  let score = 0;
+  if (ctx.guru && n(ex.guru) === n(ctx.guru)) score += 5;
+  if (ctx.promoType && n(ex.promoType) === n(ctx.promoType)) score += 3;
+  const topics = (ctx.topics ?? []).map(n).filter(Boolean);
+  if (topics.length) {
+    const hay = `${n(ex.bigIdea)} ${n(ex.reasoning)}`;
+    if (topics.some((t) => hay.includes(t))) score += 2;
+  }
+  return score;
+}
+
 export function buildCalibrationBlock(
-  examples: Array<{
-    name: string;
-    promoType?: string | null;
-    predictedScore: number | null;
-    performanceScore: number | null;
-    myScore: number | null;
-    reasoning: string;
-    bigIdea: string;
-    isBestPerformer?: boolean;
-  }>
+  examples: CalibrationExample[],
+  ctx?: CalibrationSelectionContext
 ): string {
   if (examples.length === 0) return "";
 
   const highConfidence = examples.filter(
     (ex) => ex.isBestPerformer || (ex.performanceScore !== null && ex.performanceScore >= 9)
   );
-  const standard = examples.filter(
+  let standard = examples.filter(
     (ex) => !ex.isBestPerformer && (ex.performanceScore === null || ex.performanceScore < 9)
   );
+
+  // Targeted injection: rank standard examples by relevance and cap, so the
+  // prompt isn't flooded with off-topic calibration data. High-confidence
+  // anchors are always kept in full.
+  if (ctx && standard.length > STANDARD_EXAMPLE_CAP) {
+    standard = [...standard]
+      .map((ex) => ({ ex, r: exampleRelevance(ex, ctx) }))
+      .sort((a, b) => b.r - a.r)
+      .slice(0, STANDARD_EXAMPLE_CAP)
+      .map((x) => x.ex);
+  }
 
   function formatExample(ex: typeof examples[0]): string {
     const parts: string[] = [`- **${ex.name}**`];
@@ -269,7 +305,7 @@ This is one of the most important dimensions — weight it heavily. Is this prom
 
 ## Rules for This Section
 
-- Score each of the 8 dimensions separately before arriving at the final score. The final score is your holistic conversion prediction — it does not have to be a mathematical average.
+- Score each of the 8 dimensions separately. These dimension scores are the PRIMARY output of this section. The final overall score is NOT yours to set holistically — it is DERIVED IN CODE as a conversion-weighted blend of your 8 dimension scores (hook, believability, and emotional pull are weighted most heavily, audience fit next). Score each dimension honestly and the final number takes care of itself.
 - Every dimension rationale must be positive: "Scores X because the copy does Y" — never "Loses X points because it's missing Y."
 - The final score rationale (2–3 sentences) should answer: would you bet on this promo? Name what makes you confident or uncertain.
 - Dimensions that are irrelevant or neutral for a given promo should score 7 (baseline competent) — do not manufacture a gap where there isn't one.
@@ -277,7 +313,8 @@ This is one of the most important dimensions — weight it heavily. Is this prom
 - Testimonials, veiling tactics, length, and non-hard urgency are NOT scoring penalties unless they actively harm the reader's experience. Their absence is never a deduction.
 
 ## Output Format for This Section
-Dimension scores (label, score /10, one-line rationale):
+Output the 8 dimensions EXACTLY in this format — one per line, numbered 1–8, using these exact dimension labels, an integer or one-decimal score, an em-dash, then a single-line rationale. Do not add, rename, reorder, merge, or omit any dimension. Do not insert blank lines between them.
+
 1. Hook Strength: X/10 — [one line]
 2. Believability: X/10 — [one line]
 3. Specificity: X/10 — [one line]
@@ -287,10 +324,22 @@ Dimension scores (label, score /10, one-line rationale):
 7. Call to Action / Urgency: X/10 — [one line]
 8. Audience Fit: X/10 — [one line]
 
-Score: X/10
+The final overall score is computed from the 8 dimensions above; you do NOT write a "Score:" line. If — and only if — you believe the weighted blend of the dimensions would materially misrepresent this promo's real conversion potential, you may request a single bounded adjustment of at most ±1.0, on its own line, in EXACTLY this format (omit the line entirely if no adjustment is warranted):
+
+Adjustment: +0.5 — [one sentence justifying why the blended dimensions under- or over-state the true conversion potential]
 
 Rationale: 2–3 sentences. Answer: would you bet on this promo? Be specific about what makes it work or what limits its ceiling.
 [/EFFECTIVENESS]`;
+
+/**
+ * When the input is text-only (.docx or a text-extracted PDF), the model is
+ * NOT seeing the rendered promo — there is no observable visual design. Tell
+ * it not to credit or penalize layout/imagery it cannot actually see.
+ */
+export function buildModalityBlock(isTextOnly: boolean): string {
+  if (!isTextOnly) return "";
+  return `\n\n## Input Modality Notice\nThis promo was supplied as TEXT ONLY (extracted copy, not a rendered visual). You are reading the words but you CANNOT see the actual layout, typography, images, charts, or visual design. Do NOT credit or penalize any visual-design element you cannot observe (graphics, color, formatting, image-based proof, page layout). Score Hook Strength, Momentum, and the other dimensions on the strength of the WORDS and ARGUMENT alone, and assume the visual production will be competently handled. Do not speculate that the design is weak simply because you cannot see it.`;
+}
 
 export const CUB_SYSTEM_PROMPT = `You are an expert financial copywriter performing a CUB (Confusing, Unbelievable, Boring) review of a promotional sales letter.
 

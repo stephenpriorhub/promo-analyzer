@@ -1,12 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAllReviews, deleteReview, renameReview, updateReviewTraining, updateReviewRunDate, getReviewById } from "@/lib/reviews-store";
+import { getAllReviews, deleteReview, renameReview, updateReviewTraining, updateReviewRunDate, getReviewById, getCalibrationStats } from "@/lib/reviews-store";
 import { detectGuru, detectPublisher } from "@/lib/brain-reader";
 import { extractAndStoreLessons } from "@/lib/extract-lessons";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const { searchParams } = new URL(req.url);
+  if (searchParams.get("stats") === "true") {
+    return NextResponse.json(getCalibrationStats());
+  }
   const reviews = getAllReviews();
   return NextResponse.json(reviews);
 }

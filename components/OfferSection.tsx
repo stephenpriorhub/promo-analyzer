@@ -1,10 +1,14 @@
 "use client";
 
+import type { SubScore } from "@/lib/score";
+
 interface Props {
   content: string;
   stockTease: string;
   effectiveness: string;
   calibratedEffectiveness?: string | null;
+  subScores?: SubScore[] | null;
+  finalScore?: number | null;
 }
 
 const NAVY = "#012479";
@@ -65,20 +69,28 @@ function dimensionColor(score: number): { bar: string; text: string } {
 function EffectivenessBlock({
   effectiveness,
   calibratedEffectiveness,
+  subScores,
+  finalScore: finalScoreProp,
 }: {
   effectiveness: string;
   calibratedEffectiveness: string | null;
+  subScores?: SubScore[] | null;
+  finalScore?: number | null;
 }) {
   const activeContent = renderMarkdown(calibratedEffectiveness ?? effectiveness);
 
-  // Extract dimensions robustly — handles both line-separated and run-on paragraph formats
-  const dimensions = extractDimensions(activeContent);
+  // Prefer persisted sub-scores when present; fall back to parsing the text.
+  const dimensions =
+    subScores && subScores.length > 0
+      ? subScores.map((s) => ({ label: s.dimension, score: s.score, rationale: s.rationale }))
+      : extractDimensions(activeContent);
 
-  // Final score: the "Score: X/10" marker, or the last standalone "X/10" if absent
+  // Final score: prefer the persisted (code-derived) value; else parse the text.
   const scoreMatch =
     activeContent.match(/Score:\s*(\d+(?:\.\d+)?)\s*\/\s*10/i) ??
     activeContent.match(/(\d+(?:\.\d+)?)\s*\/\s*10\s*$/);
-  const finalScore = scoreMatch ? parseFloat(scoreMatch[1]) : null;
+  const finalScore =
+    finalScoreProp != null ? finalScoreProp : scoreMatch ? parseFloat(scoreMatch[1]) : null;
 
   // Rationale: everything after "Rationale:" if present, else the tail after the dimensions
   let rationale = "";
@@ -101,7 +113,7 @@ function EffectivenessBlock({
             className="text-2xl font-bold tabular-nums"
             style={{ color: dimensionColor(finalScore).text }}
           >
-            {finalScore}/10
+            {finalScore.toFixed(1)}/10
           </span>
         )}
       </div>
@@ -146,21 +158,89 @@ function EffectivenessBlock({
   );
 }
 
-export default function OfferSection({ content, stockTease, effectiveness, calibratedEffectiveness }: Props) {
+// The known offer fields the prompt asks for, in display order. Used to decide
+// what counts as a real field header vs. a sub-bullet of a multi-value field.
+const KNOWN_FIELDS = [
+  "Big Idea",
+  "Publisher",
+  "Product name",
+  "What it is",
+  "Price",
+  "Payment options",
+  "Bonuses",
+  "Guarantee",
+  "Urgency",
+];
 
-  // Split offer content and extract the Big Idea line
-  const lines = content.split("\n").filter((l) => l.trim());
+function matchKnownField(label: string): string | null {
+  const l = label.toLowerCase();
+  for (const f of KNOWN_FIELDS) {
+    const fl = f.toLowerCase();
+    if (l === fl || l.startsWith(fl)) return f;
+  }
+  // tolerate prompt variants
+  if (l.startsWith("price")) return "Price";
+  if (l.startsWith("payment")) return "Payment options";
+  if (l.startsWith("any urgency") || l.includes("urgency") || l.includes("scarcity"))
+    return "Urgency";
+  if (l.startsWith("product")) return "Product name";
+  if (l.startsWith("what it is")) return "What it is";
+  return null;
+}
+
+interface OfferField {
+  label: string;
+  value: string;      // inline value ("" for header-only multi-value fields)
+  bullets: string[];  // sub-bullets grouped beneath (e.g. each bonus title)
+}
+
+/**
+ * Parse the offer copy into clean labeled fields. A line that begins a known
+ * field starts a new field; subsequent bullet lines that are NOT themselves a
+ * known field are attached as sub-bullets of the current field (this is how
+ * multi-value fields like Bonuses render as a header followed by their list,
+ * instead of each bullet being misclassified as its own header).
+ */
+function parseOfferFields(content: string): { bigIdea: string; fields: OfferField[] } {
+  const lines = content.split("\n").map((l) => l.replace(/\s+$/, "")).filter((l) => l.trim());
   let bigIdea = "";
-  const offerLines: string[] = [];
+  const fields: OfferField[] = [];
+  let current: OfferField | null = null;
 
   for (const line of lines) {
     const parsed = parseLine(line);
-    if (parsed && parsed.label.toLowerCase() === "big idea") {
-      bigIdea = parsed.value;
-    } else {
-      offerLines.push(line);
+    const known = parsed ? matchKnownField(parsed.label) : null;
+
+    if (parsed && known) {
+      if (known === "Big Idea") {
+        bigIdea = parsed.value;
+        current = null;
+        continue;
+      }
+      current = { label: known, value: parsed.value, bullets: [] };
+      fields.push(current);
+      continue;
     }
+
+    // Not a known-field header. If it's a bullet under an open field, group it.
+    const isBullet = /^\s*[-•*]\s+/.test(line);
+    const text = renderMarkdown(line.replace(/^\s*[-•*]\s*/, "")).trim();
+    if (!text) continue;
+    if (current && (isBullet || current.value === "")) {
+      current.bullets.push(text);
+    } else if (current && current.value) {
+      // continuation of a single-value field's text
+      current.value = `${current.value} ${text}`.trim();
+    }
+    // orphan line with no current field — ignore (avoids inventing headers)
   }
+
+  return { bigIdea, fields };
+}
+
+export default function OfferSection({ content, stockTease, effectiveness, calibratedEffectiveness, subScores, finalScore }: Props) {
+
+  const { bigIdea, fields } = parseOfferFields(content);
 
   return (
     <div className="space-y-6">
@@ -179,33 +259,34 @@ export default function OfferSection({ content, stockTease, effectiveness, calib
 
 
       {/* Offer details */}
-      {offerLines.length > 0 && (
+      {fields.length > 0 && (
         <div>
           <h3 className="font-semibold text-gray-700 mb-3 text-sm uppercase tracking-wide">
             Offer Details
           </h3>
-          <div className="space-y-2">
-            {offerLines.map((line, i) => {
-              const parsed = parseLine(line);
-              if (parsed) {
-                return (
-                  <div key={i} className="flex gap-2 text-sm">
-                    <span className="font-semibold text-gray-600 w-40 shrink-0">
-                      {parsed.label}:
-                    </span>
-                    <span className="text-gray-800">{parsed.value}</span>
-                  </div>
-                );
-              }
-              return (
-                <div key={i} className="flex gap-2 text-sm">
-                  <span className="w-40 shrink-0" />
-                  <span className="text-gray-800">
-                    {renderMarkdown(line.replace(/^[-•*]\s*/, ""))}
-                  </span>
+          <div className="space-y-3">
+            {fields.map((field, i) =>
+              field.bullets.length > 0 ? (
+                // Multi-value field: label header followed by its bullet list beneath
+                <div key={i} className="text-sm">
+                  <p className="font-semibold text-gray-600 mb-1">{field.label}:</p>
+                  {field.value && <p className="text-gray-800 mb-1 ml-1">{field.value}</p>}
+                  <ul className="list-disc list-inside space-y-0.5 ml-2 text-gray-800">
+                    {field.bullets.map((b, j) => (
+                      <li key={j}>{b}</li>
+                    ))}
+                  </ul>
                 </div>
-              );
-            })}
+              ) : (
+                // Single-value labeled field
+                <div key={i} className="flex gap-2 text-sm">
+                  <span className="font-semibold text-gray-600 w-40 shrink-0">
+                    {field.label}:
+                  </span>
+                  <span className="text-gray-800">{field.value || "—"}</span>
+                </div>
+              )
+            )}
           </div>
         </div>
       )}
@@ -233,6 +314,8 @@ export default function OfferSection({ content, stockTease, effectiveness, calib
         <EffectivenessBlock
           effectiveness={effectiveness}
           calibratedEffectiveness={calibratedEffectiveness ?? null}
+          subScores={subScores ?? null}
+          finalScore={finalScore ?? null}
         />
       )}
     </div>

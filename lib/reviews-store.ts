@@ -19,6 +19,10 @@ export interface SupplementalFile {
 
 import type { PromoType } from "./promo-types";
 export { PROMO_TYPES, type PromoType } from "./promo-types";
+import type { SubScore } from "./score";
+import { deriveScore } from "./score";
+
+export type InputType = "visual-pdf" | "docx" | "text";
 
 export interface TrainingData {
   promoType: PromoType | null;
@@ -37,6 +41,8 @@ export interface SavedReview {
   date: string;
   promoRunStartDate?: string | null; // approx date the promo started running (captured at upload)
   effectivenessScore: number | null;
+  subScores?: SubScore[];
+  inputType?: InputType;
   fkReadingEase: number | null;
   fkGradeLevel: number | null;
   sections: AnalysisSections;
@@ -91,6 +97,7 @@ export function getAllReviews(): SavedReview[] {
 export function getTrainingExamples(): Array<{
   name: string;
   promoType: PromoType | null;
+  guru: string | null;
   predictedScore: number | null;
   performanceScore: number | null;
   myScore: number | null;
@@ -118,6 +125,7 @@ export function getTrainingExamples(): Array<{
     return {
       name,
       promoType: r.training!.promoType ?? null,
+      guru: detectGuruFromReview(r),
       predictedScore: r.effectivenessScore,
       performanceScore: r.training!.performanceScore,
       myScore: r.training!.myScore,
@@ -128,26 +136,170 @@ export function getTrainingExamples(): Array<{
   });
 }
 
+// ---- Calibration statistics -------------------------------------------------
+
+export interface CalibrationBucket {
+  band: string;       // e.g. "7–10", "4–6", "1–3"
+  n: number;
+  avgPredicted: number | null;
+  avgActual: number | null;
+}
+
+export interface SliceBias {
+  key: string;        // promoType or guru value
+  n: number;
+  signedBias: number; // mean(predicted − actual); + = over-rating
+}
+
+export interface CalibrationStats {
+  n: number;
+  correlation: number | null; // Pearson r (predicted vs actual)
+  mae: number | null;         // mean absolute error
+  bandAccuracy: number | null; // % predicted landing in the correct tier band (headline)
+  buckets: CalibrationBucket[];
+  byPromoType: SliceBias[];
+  byGuru: SliceBias[];
+  largestBias: { dimension: "promoType" | "guru"; slice: SliceBias } | null;
+}
+
+function tierBand(score: number): string {
+  if (score >= 7) return "7–10";
+  if (score >= 4) return "4–6";
+  return "1–3";
+}
+
+/**
+ * Calibration over reviews that have both a predicted effectivenessScore and a
+ * training.performanceScore. Band accuracy (predicted tier == actual tier) is
+ * the headline metric.
+ */
+export function getCalibrationStats(): CalibrationStats {
+  const rows = readReviews()
+    .filter(
+      (r) =>
+        r.effectivenessScore != null &&
+        r.training?.performanceScore != null
+    )
+    .map((r) => ({
+      predicted: r.effectivenessScore as number,
+      actual: r.training!.performanceScore as number,
+      promoType: r.training!.promoType ?? "Unspecified",
+      guru:
+        detectGuruFromReview(r) ?? "Unknown",
+    }));
+
+  const n = rows.length;
+  if (n === 0) {
+    return {
+      n: 0,
+      correlation: null,
+      mae: null,
+      bandAccuracy: null,
+      buckets: [],
+      byPromoType: [],
+      byGuru: [],
+      largestBias: null,
+    };
+  }
+
+  // Pearson correlation
+  const mp = rows.reduce((a, r) => a + r.predicted, 0) / n;
+  const ma = rows.reduce((a, r) => a + r.actual, 0) / n;
+  let cov = 0, vp = 0, va = 0;
+  for (const r of rows) {
+    const dp = r.predicted - mp;
+    const da = r.actual - ma;
+    cov += dp * da;
+    vp += dp * dp;
+    va += da * da;
+  }
+  const correlation = vp > 0 && va > 0 ? cov / Math.sqrt(vp * va) : null;
+
+  // MAE
+  const mae = rows.reduce((a, r) => a + Math.abs(r.predicted - r.actual), 0) / n;
+
+  // Band accuracy
+  const correct = rows.filter((r) => tierBand(r.predicted) === tierBand(r.actual)).length;
+  const bandAccuracy = (correct / n) * 100;
+
+  // Calibration buckets (by ACTUAL tier band)
+  const bandOrder = ["7–10", "4–6", "1–3"];
+  const buckets: CalibrationBucket[] = bandOrder.map((band) => {
+    const inBand = rows.filter((r) => tierBand(r.actual) === band);
+    return {
+      band,
+      n: inBand.length,
+      avgPredicted: inBand.length
+        ? inBand.reduce((a, r) => a + r.predicted, 0) / inBand.length
+        : null,
+      avgActual: inBand.length
+        ? inBand.reduce((a, r) => a + r.actual, 0) / inBand.length
+        : null,
+    };
+  });
+
+  // Per-slice signed bias
+  function sliceBias(key: "promoType" | "guru"): SliceBias[] {
+    const groups = new Map<string, { sum: number; n: number }>();
+    for (const r of rows) {
+      const g = groups.get(r[key]) ?? { sum: 0, n: 0 };
+      g.sum += r.predicted - r.actual;
+      g.n += 1;
+      groups.set(r[key], g);
+    }
+    return [...groups.entries()]
+      .map(([k, v]) => ({ key: k, n: v.n, signedBias: v.sum / v.n }))
+      .sort((a, b) => Math.abs(b.signedBias) - Math.abs(a.signedBias));
+  }
+
+  const byPromoType = sliceBias("promoType");
+  const byGuru = sliceBias("guru");
+
+  // Largest systematic bias across both slice dimensions (require n >= 2)
+  let largestBias: CalibrationStats["largestBias"] = null;
+  const candidates: { dimension: "promoType" | "guru"; slice: SliceBias }[] = [
+    ...byPromoType.filter((s) => s.n >= 2).map((slice) => ({ dimension: "promoType" as const, slice })),
+    ...byGuru.filter((s) => s.n >= 2).map((slice) => ({ dimension: "guru" as const, slice })),
+  ];
+  for (const c of candidates) {
+    if (!largestBias || Math.abs(c.slice.signedBias) > Math.abs(largestBias.slice.signedBias)) {
+      largestBias = c;
+    }
+  }
+
+  return { n, correlation, mae, bandAccuracy, buckets, byPromoType, byGuru, largestBias };
+}
+
+/** Best-effort guru detection for a saved review (offer text, then effectiveness). */
+function detectGuruFromReview(r: SavedReview): string | null {
+  // Lazy import avoids a hard dependency cycle at module load.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { detectGuru } = require("./brain-reader") as { detectGuru: (t: string) => string | null };
+  return detectGuru(r.sections.offer ?? "") ?? detectGuru(r.sections.effectiveness ?? "");
+}
+
 export function saveReview(
   filename: string,
   sections: AnalysisSections,
   fkReadingEase: number | null,
   fkGradeLevel: number | null,
-  promoRunStartDate?: string | null
+  promoRunStartDate?: string | null,
+  inputType?: InputType
 ): SavedReview {
   const reviews = readReviews();
 
-  const effectivenessMatch = sections.effectiveness.match(/(\d+(?:\.\d+)?)\s*\/\s*10/);
-  const effectivenessScore = effectivenessMatch
-    ? parseFloat(effectivenessMatch[1])
-    : null;
+  // Final score is DERIVED in code from the 8 sub-scores (conversion-weighted
+  // blend + bounded model adjustment), not the model's holistic number.
+  const { subScores, finalScore } = deriveScore(sections.effectiveness);
 
   const review: SavedReview = {
     id: uuidv4(),
     filename,
     date: new Date().toISOString(),
     promoRunStartDate: promoRunStartDate ?? null,
-    effectivenessScore,
+    effectivenessScore: finalScore,
+    subScores: subScores.length > 0 ? subScores : undefined,
+    inputType,
     fkReadingEase,
     fkGradeLevel,
     sections,
@@ -264,14 +416,22 @@ export function updateReviewSections(
   reviews[idx].sections = sections;
   reviews[idx].fkReadingEase = fkReadingEase;
   reviews[idx].fkGradeLevel = fkGradeLevel;
-  const effectivenessMatch = sections.effectiveness.match(/(\d+(?:\.\d+)?)\s*\/\s*10/);
-  reviews[idx].effectivenessScore = effectivenessMatch
-    ? parseFloat(effectivenessMatch[1])
-    : null;
+  const { subScores, finalScore } = deriveScore(sections.effectiveness);
+  reviews[idx].effectivenessScore = finalScore;
+  reviews[idx].subScores = subScores.length > 0 ? subScores : undefined;
   // Clear any previously calibrated effectiveness — it was based on the old scoring
   if (reviews[idx].training?.calibratedEffectiveness) {
     reviews[idx].training!.calibratedEffectiveness = undefined;
   }
+  writeReviews(reviews);
+  return true;
+}
+
+export function updateReviewInputType(id: string, inputType: InputType): boolean {
+  const reviews = readReviews();
+  const idx = reviews.findIndex((r) => r.id === id);
+  if (idx === -1) return false;
+  reviews[idx].inputType = inputType;
   writeReviews(reviews);
   return true;
 }
