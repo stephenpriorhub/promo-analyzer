@@ -73,6 +73,15 @@ export default function PastReviews({
     fetchReviews();
   }, [refreshTrigger]);
 
+  // Re-sync when the tab regains focus, so scores changed out-of-band (e.g. a
+  // re-analyze in another view, or a background re-score) don't leave the
+  // sidebar showing a stale number that disagrees with the detail panel.
+  useEffect(() => {
+    const onFocus = () => fetchReviews();
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, []);
+
   // Focus input when edit mode starts
   useEffect(() => {
     if (editingId) {
