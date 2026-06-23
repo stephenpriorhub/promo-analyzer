@@ -21,15 +21,9 @@ const NAVY_BG = "#f0f4fc";
 const NAVY_BORDER = "#c8d5f0";
 
 function liveScore(review: SavedReview): number | null {
-  // Prefer calibrated score when training feedback has been applied
-  if (review.training?.calibratedEffectiveness) {
-    const m = review.training.calibratedEffectiveness.match(/(\d+(?:\.\d+)?)\s*\/\s*10/);
-    if (m) return parseFloat(m[1]);
-  }
-  // Fall back to original effectiveness text
-  const raw = review.sections?.effectiveness ?? "";
-  const m = raw.match(/(\d+(?:\.\d+)?)\s*\/\s*10/);
-  if (m) return parseFloat(m[1]);
+  // Use the persisted, code-derived score — the SAME value the detail view shows
+  // (set on analysis, re-analysis, and training re-evaluation). Don't re-parse the
+  // effectiveness text: its first "/10" is a dimension score, not the final.
   return review.effectivenessScore;
 }
 
@@ -222,7 +216,7 @@ export default function PastReviews({
                   const score = liveScore(review);
                   return score !== null ? (
                     <span className={`text-sm font-bold ${scoreColor(score)}`}>
-                      {score}/10
+                      {score.toFixed(1)}/10
                     </span>
                   ) : null;
                 })()}
