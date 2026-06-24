@@ -12,7 +12,7 @@ import { parsePromoIntel, buildIntelNote, intelNoteTitle } from "@/lib/promo-int
 import { getEnv } from "@/lib/env";
 
 export const runtime = "nodejs";
-export const maxDuration = 180;
+export const maxDuration = 90; // lowered from 180 to shrink the concurrent-request window (memory pressure / OOM mitigation)
 
 function parseSections(fullText: string): AnalysisSections {
   function extract(tag: string): string {
@@ -101,7 +101,7 @@ export async function POST(req: NextRequest) {
     if (isPdf) {
       // Upload via Files API
       const uploadedFile = await client.beta.files.upload({
-        file: new File([Uint8Array.from(buffer)], file.name, { type: "application/pdf" }),
+        file: new File([buffer], file.name, { type: "application/pdf" }),
       });
       uploadedFileId = uploadedFile.id;
     }
