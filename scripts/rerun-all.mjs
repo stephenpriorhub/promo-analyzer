@@ -29,6 +29,28 @@ const BASE = BASE_RAW.replace(/\/$/, "");
 const PROGRESS_LOG = path.join(process.cwd(), ".rerun-all-progress.log");
 const REPORT_FILE = path.join(process.cwd(), "rerun-all-report.json");
 
+// Pace + retry so we don't overwhelm the single Railway instance.
+const PACE_MS = Number(process.env.PACE_MS ?? 8000);
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+async function fetchRetry(url, opts, tries = 4) {
+  let last;
+  for (let i = 0; i < tries; i++) {
+    try {
+      const res = await fetch(url, opts);
+      if ([429, 500, 502, 503, 504].includes(res.status)) {
+        last = new Error(`HTTP ${res.status}`);
+        await sleep(10000 * (i + 1));
+        continue;
+      }
+      return res;
+    } catch (e) {
+      last = e;
+      await sleep(10000 * (i + 1));
+    }
+  }
+  throw last;
+}
+
 function loadProgress() {
   if (!fs.existsSync(PROGRESS_LOG)) return new Set();
   return new Set(
@@ -54,7 +76,7 @@ async function getReviewScore(reviewId) {
 
 /** Returns 'ok' | 'missing-source' | 'error'. Drains the stream on success. */
 async function reanalyze(reviewId) {
-  const res = await fetch(`${BASE}/api/reanalyze`, {
+  const res = await fetchRetry(`${BASE}/api/reanalyze`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ reviewId }),
@@ -105,6 +127,7 @@ async function main() {
       failed++;
       console.log(`FAIL: ${err.message}`);
     }
+    await sleep(PACE_MS); // breathing room for the instance
   }
 
   fs.writeFileSync(

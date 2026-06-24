@@ -42,6 +42,31 @@ const BANDS = [
 
 const VALID_EXT = new Set([".pdf", ".docx"]);
 
+// Pace requests so we don't overwhelm the single Railway instance (heavy
+// PDF-vision analyses can OOM/crash it under back-to-back load → 502s).
+const PACE_MS = Number(process.env.PACE_MS ?? 8000);
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// Retry transient server failures (502/503/504/429) with backoff.
+async function fetchRetry(url, opts, tries = 4) {
+  let last;
+  for (let i = 0; i < tries; i++) {
+    try {
+      const res = await fetch(url, opts);
+      if ([429, 500, 502, 503, 504].includes(res.status)) {
+        last = new Error(`HTTP ${res.status}`);
+        await sleep(10000 * (i + 1)); // 10s, 20s, 30s — let the instance recover
+        continue;
+      }
+      return res;
+    } catch (e) {
+      last = e;
+      await sleep(10000 * (i + 1));
+    }
+  }
+  throw last;
+}
+
 function loadProgress() {
   if (!fs.existsSync(PROGRESS_LOG)) return new Set();
   return new Set(
@@ -89,7 +114,7 @@ async function analyzeFile(filePath, filename) {
     : "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
   form.append("file", new Blob([buf], { type }), filename);
 
-  const res = await fetch(`${BASE}/api/analyze`, { method: "POST", body: form });
+  const res = await fetchRetry(`${BASE}/api/analyze`, { method: "POST", body: form });
   if (!res.ok) {
     const msg = await res.text().catch(() => "");
     throw new Error(`analyze failed (${res.status}): ${msg.slice(0, 200)}`);
@@ -103,7 +128,7 @@ async function analyzeFile(filePath, filename) {
 }
 
 async function labelReview(reviewId, band) {
-  const res = await fetch(`${BASE}/api/reviews`, {
+  const res = await fetchRetry(`${BASE}/api/reviews`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -155,6 +180,7 @@ async function main() {
       failed++;
       console.log(`FAIL: ${err.message}`);
     }
+    await sleep(PACE_MS); // breathing room for the instance
   }
 
   console.log(`\nDone. ${ok} processed, ${skipped} skipped, ${failed} failed.`);
