@@ -113,6 +113,7 @@ async function analyzeFile(filePath, filename) {
     ? "application/pdf"
     : "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
   form.append("file", new Blob([buf], { type }), filename);
+  form.append("skipBrain", "true"); // avoid cumulative brain-write load during bulk
 
   const res = await fetchRetry(`${BASE}/api/analyze`, { method: "POST", body: form });
   if (!res.ok) {

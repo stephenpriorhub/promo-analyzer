@@ -49,6 +49,10 @@ export async function POST(req: NextRequest) {
     }
     // Approx date the promo started running (optional) — captured at upload
     const promoRunStartDate = (formData.get("promoRunStartDate") as string | null)?.trim() || null;
+    // Bulk backfill sets this to skip the 2 fire-and-forget brain writes per analysis,
+    // which otherwise pile up (GitHub API calls) and destabilize the process over a batch.
+    // The hourly Brain Master syncs these reviews to the vault anyway.
+    const skipBrain = (formData.get("skipBrain") as string | null) === "true";
 
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
@@ -205,7 +209,8 @@ export async function POST(req: NextRequest) {
           controller.close();
 
           // Fire-and-forget: auto-save to brain vault after every successful analysis
-          (() => {
+          // (skipped during bulk backfill to avoid cumulative GitHub-write load).
+          if (!skipBrain) (() => {
             const baseUrl =
               process.env.NEXTAUTH_URL?.replace(/\/$/, "") ||
               `http://${req.headers.get("host") ?? "localhost:3000"}`;
