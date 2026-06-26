@@ -289,6 +289,18 @@ Does the reader know exactly what to do next and feel motivated to do it now rat
 **8. Audience Fit** (score /10)
 This is one of the most important dimensions — weight it heavily. Is this promo genuinely right for the customer avatar — conservative males 50–70 who are familiar with the market but not professional traders, deeply skeptical of hype, motivated by security and protecting/growing retirement savings, responsive to authority and track records, and put off by jargon and "get rich quick" framing? Does it speak their language, respect their intelligence, and address their actual fears (being left behind, losing savings, being the sucker) and desires (security, supplemental income, being the smart one)? A technically excellent promo aimed at the wrong person scores low here. A promo that nails this avatar — even if rough in other ways — has a high conversion ceiling. Explicitly judge whether the emotional and credibility appeals match what THIS avatar responds to, drawing on the guru and audience intelligence provided below when available.
 
+## FAILURE MODES — when present, score the named dimensions LOW (2–4), not mid
+These are the recurring reasons promos that LOOK competent actually flop in market. They are derived from real promos that scored well on surface craft but bombed. When you detect any of these, the named dimension(s) MUST land in the 2–4 range — do NOT let strong Specificity, Hook, or Offer Clarity mask them. A polished promo with a fatal flaw is a 3, not a 6.
+- **No hard external urgency** — urgency is asserted/soft with no real deadline, dated event, enrollment cap, or price expiration (the single most common flop cause) → **Call to Action / Urgency ≤ 3**.
+- **Guru–mechanism mismatch** — the guru's credibility/track record doesn't fit what's pitched (e.g. a short-term trader pitching long-term/quantum/macro themes; credibility built on personality not domain results) → **Believability ≤ 4 AND Audience Fit ≤ 4**.
+- **Credibility rests on novelty/backtests/cherry-picked examples** — leans on mechanism novelty, backtested or "model portfolio" numbers, or meme-stock examples (GME/AMC/ARKK) instead of a verified, well-known real-world track record → **Believability ≤ 4**.
+- **Specificity masking a credibility gap** — lots of named numbers/dates/tickers but the core claim isn't believably grounded → Specificity does NOT compensate; keep **Believability low** and do not let specificity inflate the overall.
+- **Diluted core narrative / structural bloat** — multiple unrelated bonus themes, a long filler middle, or a lost through-line → **Momentum ≤ 4**.
+- **Big-idea/product mismatch** — the hook promises more than the product can deliver → **Believability and Audience Fit drop**.
+
+## Distribution Rule (read before assigning the final)
+Most real promos underperform — the score distribution should be WIDE, not clustered at 6–7. Reserve 7+ for promos that have credible proof AND real urgency AND genuine guru-mechanism fit. If a promo has any fatal flaw above, it belongs at 2–4 even when the hook and specificity are polished — catching competent-looking copy that won't convert is the entire point. When torn between two bands, choose the lower one.
+
 ## Scoring Calibration
 
 **10/10**: Dominates on all or nearly all dimensions. This promo would be a proven control or clear runaway hit. Give a 10 when you would genuinely bet money on it outperforming the field. 10s are rare but real — they exist.
