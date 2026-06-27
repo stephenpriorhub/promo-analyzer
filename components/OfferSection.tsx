@@ -121,7 +121,7 @@ function EffectivenessBlock({
     <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 space-y-4">
       <div className="flex items-center justify-between">
         <h3 className="font-semibold text-slate-700 text-sm uppercase tracking-wide">
-          Conversion Prediction
+          Copy Quality Score
         </h3>
         {finalScore !== null && (
           <span

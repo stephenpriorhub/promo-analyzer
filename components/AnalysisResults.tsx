@@ -56,7 +56,7 @@ const STEPS: { key: keyof AnalysisSections; label: string }[] = [
   { key: "cub", label: "CUB Review" },
   { key: "offer", label: "Offer Summary" },
   { key: "stockTease", label: "Stock Tease" },
-  { key: "effectiveness", label: "Effectiveness Score" },
+  { key: "effectiveness", label: "Copy Quality Score" },
 ];
 
 function ProgressBar({ sections, streaming, pct }: { sections: AnalysisSections; streaming?: boolean; pct: number }) {

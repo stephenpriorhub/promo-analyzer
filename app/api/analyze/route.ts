@@ -224,7 +224,7 @@ export async function POST(req: NextRequest) {
               `- **Analyzed:** ${saved.date}`,
               `- **Review ID:** ${saved.id}`,
               saved.effectivenessScore != null
-                ? `- **Effectiveness Score:** ${saved.effectivenessScore}/10`
+                ? `- **Copy Quality Score:** ${saved.effectivenessScore}/10`
                 : "",
               fkLine,
               "",

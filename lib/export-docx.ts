@@ -187,7 +187,7 @@ export async function buildExportDocx(
       children.push(
         new Paragraph({
           children: [
-            new TextRun({ text: `Effectiveness Score: `, bold: true, size: 22 }),
+            new TextRun({ text: `Copy Quality Score: `, bold: true, size: 22 }),
             new TextRun({
               text: `${effMatch[1]}/10`,
               size: 22,
@@ -212,7 +212,7 @@ export async function buildExportDocx(
     { title: "CUB Review — Full Copy with Annotations", key: "cub", isCUB: true },
     { title: "Offer Summary", key: "offer" },
     { title: "Stock Tease", key: "stockTease" },
-    { title: "Effectiveness Score", key: "effectiveness" },
+    { title: "Copy Quality Score", key: "effectiveness" },
   ];
 
   for (const { title, key, isCUB } of sectionsToRender) {
