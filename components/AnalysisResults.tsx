@@ -10,6 +10,7 @@ import OutlineSection from "./OutlineSection";
 import EvaldoSection from "./EvaldoSection";
 import CUBViewer from "./CUBViewer";
 import OfferSection from "./OfferSection";
+import PromoMetadata from "./PromoMetadata";
 import BrainModal from "./BrainModal";
 import TrainingTab from "./TrainingTab";
 import DocumentsTab from "./DocumentsTab";
@@ -32,6 +33,10 @@ interface Props {
   calibratedEffectiveness?: string | null;
   initialTraining?: TrainingData;
   initialRunDate?: string | null;
+  initialPromoCode?: string | null;
+  initialPublisher?: string | null;
+  initialGurus?: string[];
+  initialProduct?: string | null;
   onScoreApplied?: () => void;
   onRename?: (newName: string) => void;
   onReanalyzed?: (sections: AnalysisSections, fkScore: FKScore | null) => void;
@@ -121,6 +126,10 @@ export default function AnalysisResults({
   calibratedEffectiveness,
   initialTraining,
   initialRunDate,
+  initialPromoCode,
+  initialPublisher,
+  initialGurus,
+  initialProduct,
   onScoreApplied,
   onRename,
   onReanalyzed,
@@ -321,12 +330,12 @@ export default function AnalysisResults({
           </div>
         </div>
         {!streaming && (
-          <div className="flex items-center gap-2 shrink-0 flex-wrap">
+          <div className="flex items-center gap-2 flex-wrap w-full sm:w-auto">
             {reviewId && (
               <button
                 onClick={handleReanalyze}
                 disabled={reanalyzing}
-                className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium border transition-colors disabled:opacity-50"
+                className="flex items-center gap-2 px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-medium border transition-colors disabled:opacity-50"
                 style={{ borderColor: NAVY_BORDER, color: NAVY, background: NAVY_BG }}
                 onMouseEnter={e => !reanalyzing && (e.currentTarget.style.background = "#dce8f8")}
                 onMouseLeave={e => (e.currentTarget.style.background = NAVY_BG)}
@@ -337,7 +346,7 @@ export default function AnalysisResults({
             )}
             <button
               onClick={() => setBrainOpen(true)}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium border transition-colors"
+              className="flex items-center gap-2 px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-medium border transition-colors"
               style={{ borderColor: NAVY_BORDER, color: NAVY, background: NAVY_BG }}
               onMouseEnter={e => (e.currentTarget.style.background = "#dce8f8")}
               onMouseLeave={e => (e.currentTarget.style.background = NAVY_BG)}
@@ -347,7 +356,7 @@ export default function AnalysisResults({
             <button
               onClick={handleExport}
               disabled={exporting}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm font-medium disabled:opacity-50 transition-colors"
+              className="flex items-center gap-2 px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg text-white text-xs sm:text-sm font-medium disabled:opacity-50 transition-colors"
               style={{ background: NAVY }}
               onMouseEnter={e => (e.currentTarget.style.background = NAVY_LIGHT)}
               onMouseLeave={e => (e.currentTarget.style.background = NAVY)}
@@ -408,14 +417,26 @@ export default function AnalysisResults({
           )
         )}
         {activeTab === "offer" && (
-          <OfferSection
-            content={sections.offer}
-            stockTease={sections.stockTease}
-            effectiveness={sections.effectiveness}
-            calibratedEffectiveness={effectivenessOverride !== null ? effectivenessOverride : null}
-            subScores={subScores ?? null}
-            finalScore={effectivenessOverride ? null : effectivenessScore}
-          />
+          <div className="space-y-6">
+            {reviewId && (
+              <PromoMetadata
+                reviewId={reviewId}
+                initialPromoCode={initialPromoCode}
+                initialPublisher={initialPublisher}
+                initialGurus={initialGurus}
+                initialProduct={initialProduct}
+                onUpdated={onScoreApplied}
+              />
+            )}
+            <OfferSection
+              content={sections.offer}
+              stockTease={sections.stockTease}
+              effectiveness={sections.effectiveness}
+              calibratedEffectiveness={effectivenessOverride !== null ? effectivenessOverride : null}
+              subScores={subScores ?? null}
+              finalScore={effectivenessOverride ? null : effectivenessScore}
+            />
+          </div>
         )}
         {activeTab === "documents" && (
           <DocumentsTab reviewId={reviewId ?? null} filename={filename} />

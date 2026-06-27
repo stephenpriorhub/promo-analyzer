@@ -71,6 +71,7 @@ export default function Home() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [view, setView] = useState<ViewState>({ type: "upload" });
   const [refreshReviews, setRefreshReviews] = useState(0);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -234,6 +235,10 @@ export default function Home() {
   const displayInitialTraining: TrainingData | undefined = activeReview?.training ?? undefined;
   const displayNameProp: string | null = activeReview?.displayName ?? null;
   const displayRunDate: string | null = activeReview?.promoRunStartDate ?? null;
+  const displayPromoCode: string | null = activeReview?.promoCode ?? null;
+  const displayPublisher: string | null = activeReview?.publisher ?? null;
+  const displayGurus: string[] = activeReview?.gurus ?? [];
+  const displayProduct: string | null = activeReview?.product ?? null;
   const displayCalibratedEffectiveness: string | null =
     activeReview?.training?.calibratedEffectiveness ?? null;
 
@@ -245,14 +250,24 @@ export default function Home() {
       {/* Navy header */}
       <header
         style={{ background: NAVY }}
-        className="px-6 py-3 flex items-center justify-between shadow-md"
+        className="px-4 sm:px-6 py-3 flex items-center justify-between gap-2 shadow-md"
       >
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-3 min-w-0">
+          {/* Mobile sidebar toggle */}
+          <button
+            onClick={() => setMobileSidebarOpen((o) => !o)}
+            className="md:hidden shrink-0 text-white p-1.5 -ml-1 rounded hover:bg-white/10"
+            aria-label="Toggle past reviews"
+          >
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <line x1="3" y1="6" x2="21" y2="6" /><line x1="3" y1="12" x2="21" y2="12" /><line x1="3" y1="18" x2="21" y2="18" />
+            </svg>
+          </button>
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/logos/mta-logo-white.png" alt="MTA" className="h-8 w-auto" />
-          <div className="border-l border-white/30 pl-4">
-            <h1 className="text-base font-bold text-white leading-tight">SP&apos;s Promo Analyzer</h1>
-            <p className="text-xs mt-0.5" style={{ color: "#a8bde8" }}>
+          <img src="/logos/mta-logo-white.png" alt="MTA" className="hidden sm:block h-8 w-auto shrink-0" />
+          <div className="sm:border-l sm:border-white/30 sm:pl-3 min-w-0">
+            <h1 className="text-sm sm:text-base font-bold text-white leading-tight truncate">SP&apos;s Promo Analyzer</h1>
+            <p className="text-xs mt-0.5 hidden sm:block" style={{ color: "#a8bde8" }}>
               From MTA&apos;s AI Labs &mdash; Internal Use Only
             </p>
           </div>
@@ -271,12 +286,12 @@ export default function Home() {
           }}
         />
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 shrink-0">
           <button
             onClick={() =>
               setView((prev) => (prev.type === "lessons" ? { type: "upload" } : { type: "lessons" }))
             }
-            className="text-sm px-3 py-1.5 rounded border transition-colors font-medium"
+            className="text-xs sm:text-sm px-2 sm:px-3 py-1.5 rounded border transition-colors font-medium whitespace-nowrap"
             style={{
               borderColor: "rgba(255,255,255,0.3)",
               color: "white",
@@ -288,24 +303,35 @@ export default function Home() {
                 view.type === "lessons" ? "rgba(255,255,255,0.18)" : "transparent")
             }
           >
-            Lessons Learned
+            <span className="sm:hidden">Lessons</span>
+            <span className="hidden sm:inline">Lessons Learned</span>
           </button>
           <button
             onClick={() => fileInputRef.current?.click()}
-            className="text-sm px-3 py-1.5 rounded border transition-colors font-medium"
+            className="text-xs sm:text-sm px-2 sm:px-3 py-1.5 rounded border transition-colors font-medium whitespace-nowrap"
             style={{ borderColor: "rgba(255,255,255,0.3)", color: "white", background: "transparent" }}
             onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.1)")}
             onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
           >
-            + New Promo
+            <span className="sm:hidden">+ New</span>
+            <span className="hidden sm:inline">+ New Promo</span>
           </button>
         </div>
       </header>
 
-      <div className="flex flex-1 overflow-hidden">
-        {/* Sidebar */}
+      <div className="flex flex-1 overflow-hidden relative">
+        {/* Mobile backdrop when sidebar drawer is open */}
+        {mobileSidebarOpen && (
+          <div
+            className="md:hidden fixed inset-0 z-20 bg-black/30"
+            onClick={() => setMobileSidebarOpen(false)}
+          />
+        )}
+        {/* Sidebar — static column on desktop, slide-in drawer on mobile */}
         <aside
-          className="w-64 shrink-0 flex flex-col border-r"
+          className={`${
+            mobileSidebarOpen ? "translate-x-0" : "-translate-x-full"
+          } md:translate-x-0 fixed md:static z-30 top-0 bottom-0 left-0 w-64 shrink-0 flex flex-col border-r transition-transform duration-200`}
           style={{ background: "#fff", borderColor: "#dde4f0" }}
         >
           <div
@@ -321,8 +347,8 @@ export default function Home() {
           </div>
           <div className="flex-1 overflow-y-auto">
             <PastReviews
-              onLoad={handleLoadReview}
-              onSelectJob={handleSelectJob}
+              onLoad={(r) => { handleLoadReview(r); setMobileSidebarOpen(false); }}
+              onSelectJob={(j) => { handleSelectJob(j); setMobileSidebarOpen(false); }}
               refreshTrigger={refreshReviews}
               inProgressJobs={inProgressJobs}
               activeJobId={view.type === "job" ? view.id : undefined}
@@ -330,7 +356,7 @@ export default function Home() {
           </div>
         </aside>
 
-        <main className="flex-1 overflow-y-auto p-6">
+        <main className="flex-1 overflow-y-auto p-4 sm:p-6">
           {displayError && (
             <div className="mb-6 bg-red-50 border border-red-200 text-red-700 rounded-lg px-4 py-3 text-sm">
               {displayError}
@@ -380,6 +406,10 @@ export default function Home() {
                 calibratedEffectiveness={displayCalibratedEffectiveness}
                 initialTraining={displayInitialTraining}
                 initialRunDate={displayRunDate}
+                initialPromoCode={displayPromoCode}
+                initialPublisher={displayPublisher}
+                initialGurus={displayGurus}
+                initialProduct={displayProduct}
                 onScoreApplied={() => setRefreshReviews((n) => n + 1)}
                 onReanalyzed={handleReanalyzed}
                 onRename={(newName) => {

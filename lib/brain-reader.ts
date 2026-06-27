@@ -106,6 +106,19 @@ export function detectPublisher(offerText: string): string | null {
   return null;
 }
 
+// Hosts/analysts who front shows but don't own products — excluded from guru options.
+const NON_GURU_HOSTS = new Set(["Chris Johnson"]);
+
+/** Known publisher labels (deduped) for seeding dropdown options. */
+export function getKnownPublishers(): string[] {
+  return Array.from(new Set(Object.values(PUBLISHER_KEYWORDS))).sort((a, b) => a.localeCompare(b));
+}
+
+/** Known gurus (editors/strategists only — hosts excluded) for seeding dropdown options. */
+export function getKnownGurus(): string[] {
+  return Object.keys(GURU_MAP).filter((g) => !NON_GURU_HOSTS.has(g)).sort((a, b) => a.localeCompare(b));
+}
+
 export interface BrainContext {
   guru: string | null;
   publisher: string | null;

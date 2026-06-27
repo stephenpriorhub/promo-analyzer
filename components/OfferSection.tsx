@@ -266,7 +266,13 @@ function parseOfferFields(content: string): { bigIdea: string; fields: OfferFiel
 
 export default function OfferSection({ content, stockTease, effectiveness, calibratedEffectiveness, subScores, finalScore }: Props) {
 
-  const { bigIdea, fields } = parseOfferFields(content);
+  const parsed = parseOfferFields(content);
+  const bigIdea = parsed.bigIdea;
+  // Publisher and Product are now editable in the PromoMetadata block above, so
+  // drop them from the read-only parsed display to avoid duplication.
+  const fields = parsed.fields.filter(
+    (f) => f.label !== "Publisher" && f.label !== "Product name"
+  );
 
   return (
     <div className="space-y-6">

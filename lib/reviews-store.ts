@@ -41,6 +41,9 @@ export interface SavedReview {
   date: string;
   promoRunStartDate?: string | null; // approx date the promo started running (captured at upload)
   promoCode?: string | null; // join key to the external performance sheet (optional; only some promos have one)
+  publisher?: string | null; // editable; auto-seeded from detection, user-correctable
+  gurus?: string[];          // editable; editors/strategists only (hosts excluded)
+  product?: string | null;   // editable; the promoted product/publication
   effectivenessScore: number | null;
   predictedScore?: number | null; // original copy-derived prediction (calibration baseline; NOT overwritten by training re-evaluation)
   subScores?: SubScore[];
@@ -282,6 +285,70 @@ function detectGuruFromReview(r: SavedReview): string | null {
   return detectGuru(r.sections.offer ?? "") ?? detectGuru(r.sections.effectiveness ?? "");
 }
 
+// Hosts/analysts are NOT gurus for this field (they front shows but don't own products).
+const NON_GURU_HOSTS = new Set(["Chris Johnson"]);
+
+/** Pull the product/publication name from the parsed offer copy, if present. */
+export function parseProductFromOffer(offerText: string): string | null {
+  for (const line of (offerText ?? "").split("\n")) {
+    const stripped = line.replace(/^[-•*]\s*/, "").replace(/\*\*([^*]+)\*\*/g, "$1");
+    const colonIdx = stripped.indexOf(":");
+    if (colonIdx === -1 || colonIdx > 40) continue;
+    const label = stripped.slice(0, colonIdx).trim().toLowerCase();
+    if (label === "product name" || label === "product") {
+      const val = stripped.slice(colonIdx + 1).trim();
+      if (val && val !== "—") return val;
+    }
+  }
+  return null;
+}
+
+/** Auto-seed publisher / gurus / product for a review from detection + offer parse. */
+function seedMetadata(r: SavedReview): { publisher: string | null; gurus: string[]; product: string | null } {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { detectPublisher } = require("./brain-reader") as { detectPublisher: (t: string) => string | null };
+  const text = `${r.sections.offer ?? ""}\n${r.sections.effectiveness ?? ""}`;
+  const publisher = detectPublisher(text) ?? null;
+  const detectedGuru = detectGuruFromReview(r);
+  const gurus = detectedGuru && !NON_GURU_HOSTS.has(detectedGuru) ? [detectedGuru] : [];
+  const product = parseProductFromOffer(r.sections.offer ?? "");
+  return { publisher, gurus, product };
+}
+
+/** Distinct non-empty values already used across reviews, for dropdown options. */
+export function getDistinctMetaValues(): { publishers: string[]; gurus: string[]; products: string[] } {
+  const reviews = readReviews();
+  const publishers = new Set<string>();
+  const gurus = new Set<string>();
+  const products = new Set<string>();
+  for (const r of reviews) {
+    if (r.publisher) publishers.add(r.publisher);
+    for (const g of r.gurus ?? []) if (g) gurus.add(g);
+    if (r.product) products.add(r.product);
+    // also harvest products parsed from offer copy even if not yet stored
+    const p = parseProductFromOffer(r.sections.offer ?? "");
+    if (p) products.add(p);
+  }
+  const srt = (s: Set<string>) => [...s].sort((a, b) => a.localeCompare(b));
+  return { publishers: srt(publishers), gurus: srt(gurus), products: srt(products) };
+}
+
+/** One-time backfill: fill missing publisher/gurus/product on existing reviews. Returns count updated. */
+export function backfillMetadata(): { updated: number; total: number } {
+  const reviews = readReviews();
+  let updated = 0;
+  for (const r of reviews) {
+    const seed = seedMetadata(r);
+    let changed = false;
+    if ((r.publisher == null || r.publisher === "") && seed.publisher) { r.publisher = seed.publisher; changed = true; }
+    if ((!r.gurus || r.gurus.length === 0) && seed.gurus.length) { r.gurus = seed.gurus; changed = true; }
+    if ((r.product == null || r.product === "") && seed.product) { r.product = seed.product; changed = true; }
+    if (changed) updated++;
+  }
+  if (updated) writeReviews(reviews);
+  return { updated, total: reviews.length };
+}
+
 export function saveReview(
   filename: string,
   sections: AnalysisSections,
@@ -311,6 +378,13 @@ export function saveReview(
     fkGradeLevel,
     sections,
   };
+
+  // Auto-seed editable metadata (publisher/gurus/product) from detection so the
+  // Offer Details fields are pre-filled; the user can correct any of them.
+  const seed = seedMetadata(review);
+  review.publisher = seed.publisher;
+  review.gurus = seed.gurus;
+  review.product = seed.product;
 
   reviews.push(review);
   writeReviews(reviews);
@@ -412,6 +486,33 @@ export function updateReviewPromoCode(id: string, promoCode: string | null): boo
   const idx = reviews.findIndex((r) => r.id === id);
   if (idx === -1) return false;
   reviews[idx].promoCode = promoCode?.trim() || null;
+  writeReviews(reviews);
+  return true;
+}
+
+export function updateReviewPublisher(id: string, publisher: string | null): boolean {
+  const reviews = readReviews();
+  const idx = reviews.findIndex((r) => r.id === id);
+  if (idx === -1) return false;
+  reviews[idx].publisher = publisher?.trim() || null;
+  writeReviews(reviews);
+  return true;
+}
+
+export function updateReviewGurus(id: string, gurus: string[]): boolean {
+  const reviews = readReviews();
+  const idx = reviews.findIndex((r) => r.id === id);
+  if (idx === -1) return false;
+  reviews[idx].gurus = Array.from(new Set((gurus ?? []).map((g) => g.trim()).filter(Boolean)));
+  writeReviews(reviews);
+  return true;
+}
+
+export function updateReviewProduct(id: string, product: string | null): boolean {
+  const reviews = readReviews();
+  const idx = reviews.findIndex((r) => r.id === id);
+  if (idx === -1) return false;
+  reviews[idx].product = product?.trim() || null;
   writeReviews(reviews);
   return true;
 }

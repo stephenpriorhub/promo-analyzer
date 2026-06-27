@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAllReviews, deleteReview, renameReview, updateReviewTraining, updateReviewRunDate, updateReviewPromoCode, getReviewById, getCalibrationStats } from "@/lib/reviews-store";
+import { getAllReviews, deleteReview, renameReview, updateReviewTraining, updateReviewRunDate, updateReviewPromoCode, updateReviewPublisher, updateReviewGurus, updateReviewProduct, getReviewById, getCalibrationStats } from "@/lib/reviews-store";
 import { detectGuru, detectPublisher } from "@/lib/brain-reader";
 import { extractAndStoreLessons } from "@/lib/extract-lessons";
 
@@ -30,7 +30,7 @@ export async function DELETE(req: NextRequest) {
 
 export async function PATCH(req: NextRequest) {
   const body = await req.json();
-  const { id, displayName, training, effectiveness, promoRunStartDate, promoCode } = body;
+  const { id, displayName, training, effectiveness, promoRunStartDate, promoCode, publisher, gurus, product } = body;
 
   if (!id) {
     return NextResponse.json({ error: "id required" }, { status: 400 });
@@ -48,6 +48,21 @@ export async function PATCH(req: NextRequest) {
 
   if (promoCode !== undefined) {
     const ok = updateReviewPromoCode(id, promoCode || null);
+    if (!ok) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
+  if (publisher !== undefined) {
+    const ok = updateReviewPublisher(id, publisher || null);
+    if (!ok) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
+  if (gurus !== undefined) {
+    const ok = updateReviewGurus(id, Array.isArray(gurus) ? gurus : []);
+    if (!ok) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
+  if (product !== undefined) {
+    const ok = updateReviewProduct(id, product || null);
     if (!ok) return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
