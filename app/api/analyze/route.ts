@@ -49,6 +49,8 @@ export async function POST(req: NextRequest) {
     }
     // Approx date the promo started running (optional) — captured at upload
     const promoRunStartDate = (formData.get("promoRunStartDate") as string | null)?.trim() || null;
+    // Promo code (optional) — join key to the external performance sheet
+    const promoCode = (formData.get("promoCode") as string | null)?.trim() || null;
     // Bulk backfill sets this to skip the 2 fire-and-forget brain writes per analysis,
     // which otherwise pile up (GitHub API calls) and destabilize the process over a batch.
     // The hourly Brain Master syncs these reviews to the vault anyway.
@@ -190,7 +192,8 @@ export async function POST(req: NextRequest) {
             fkScore?.readingEase ?? null,
             fkScore?.gradeLevel ?? null,
             promoRunStartDate,
-            inputType
+            inputType,
+            promoCode
           );
 
           // Save original source file to disk

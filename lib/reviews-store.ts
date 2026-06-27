@@ -40,6 +40,7 @@ export interface SavedReview {
   displayName?: string;
   date: string;
   promoRunStartDate?: string | null; // approx date the promo started running (captured at upload)
+  promoCode?: string | null; // join key to the external performance sheet (optional; only some promos have one)
   effectivenessScore: number | null;
   predictedScore?: number | null; // original copy-derived prediction (calibration baseline; NOT overwritten by training re-evaluation)
   subScores?: SubScore[];
@@ -287,7 +288,8 @@ export function saveReview(
   fkReadingEase: number | null,
   fkGradeLevel: number | null,
   promoRunStartDate?: string | null,
-  inputType?: InputType
+  inputType?: InputType,
+  promoCode?: string | null
 ): SavedReview {
   const reviews = readReviews();
 
@@ -300,6 +302,7 @@ export function saveReview(
     filename,
     date: new Date().toISOString(),
     promoRunStartDate: promoRunStartDate ?? null,
+    promoCode: promoCode?.trim() || null,
     effectivenessScore: finalScore,
     predictedScore: finalScore, // calibration baseline — the model's copy-based prediction
     subScores: subScores.length > 0 ? subScores : undefined,
@@ -400,6 +403,15 @@ export function updateReviewRunDate(id: string, promoRunStartDate: string | null
   const idx = reviews.findIndex((r) => r.id === id);
   if (idx === -1) return false;
   reviews[idx].promoRunStartDate = promoRunStartDate;
+  writeReviews(reviews);
+  return true;
+}
+
+export function updateReviewPromoCode(id: string, promoCode: string | null): boolean {
+  const reviews = readReviews();
+  const idx = reviews.findIndex((r) => r.id === id);
+  if (idx === -1) return false;
+  reviews[idx].promoCode = promoCode?.trim() || null;
   writeReviews(reviews);
   return true;
 }
