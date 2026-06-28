@@ -288,6 +288,18 @@ function detectGuruFromReview(r: SavedReview): string | null {
 // Hosts/analysts are NOT gurus for this field (they front shows but don't own products).
 const NON_GURU_HOSTS = new Set(["Chris Johnson"]);
 
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const CANON_SNAPSHOT = require("./canonical-entities.json") as { gurus: string[]; publishers: string[]; products: string[] };
+
+/** Canonical gurus whose name appears in the text (snapshot-based, synchronous). */
+function snapshotGurusInText(text: string): string[] {
+  const hay = text.toLowerCase().replace(/\s+/g, " ").trim();
+  return (CANON_SNAPSHOT.gurus ?? []).filter((g) => {
+    const n = g.toLowerCase().replace(/\s+/g, " ").trim();
+    return n.length >= 5 && hay.includes(n) && !NON_GURU_HOSTS.has(g);
+  });
+}
+
 /** Pull the product/publication name from the parsed offer copy, if present. */
 export function parseProductFromOffer(offerText: string): string | null {
   for (const line of (offerText ?? "").split("\n")) {
@@ -310,7 +322,13 @@ function seedMetadata(r: SavedReview): { publisher: string | null; gurus: string
   const text = `${r.sections.offer ?? ""}\n${r.sections.effectiveness ?? ""}`;
   const publisher = detectPublisher(text) ?? null;
   const detectedGuru = detectGuruFromReview(r);
-  const gurus = detectedGuru && !NON_GURU_HOSTS.has(detectedGuru) ? [detectedGuru] : [];
+  // Union the small built-in detection with the full canonical snapshot match.
+  const gurus = Array.from(
+    new Set([
+      ...(detectedGuru && !NON_GURU_HOSTS.has(detectedGuru) ? [detectedGuru] : []),
+      ...snapshotGurusInText(text),
+    ])
+  );
   const product = parseProductFromOffer(r.sections.offer ?? "");
   return { publisher, gurus, product };
 }
@@ -360,32 +378,21 @@ export async function backfillMetadataCanonical(): Promise<{ updated: number; to
   // Lazy import to avoid load-time cycles.
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const br = require("./brain-reader") as {
-    loadPublishingDirectory: () => Promise<string | null>;
-    matchDirectoryEntities: (text: string, dir: string | null) => Array<{ guru: string; publication: string; parent: string }>;
-    stripProductCode: (s: string) => string;
+    findCanonicalGurusInText: (text: string) => Promise<string[]>;
   };
-  const dirText = await br.loadPublishingDirectory();
 
   const reviews = readReviews();
   let updated = 0;
   let matched = 0;
   for (const r of reviews) {
     const text = `${r.sections.offer ?? ""}\n${r.sections.effectiveness ?? ""}`;
-    const hits = br.matchDirectoryEntities(text, dirText);
     let changed = false;
 
-    if (hits.length > 0) {
+    // Match canonical gurus by name in the copy (uses live ∪ snapshot list).
+    const gurus = (await br.findCanonicalGurusInText(text)).filter((g) => !NON_GURU_HOSTS.has(g));
+    if (gurus.length) {
       matched++;
-      // Canonical gurus (exclude hosts), publisher (parent), product (publication)
-      const gurus = Array.from(
-        new Set(hits.map((h) => h.guru).filter((g) => g && !NON_GURU_HOSTS.has(g)))
-      );
-      const parent = hits.map((h) => h.parent).find((p) => p && p.trim());
-      const product = hits.map((h) => br.stripProductCode(h.publication)).find((p) => p && p.trim());
-
-      if (gurus.length && JSON.stringify(gurus) !== JSON.stringify(r.gurus ?? [])) { r.gurus = gurus; changed = true; }
-      if (parent && r.publisher !== parent) { r.publisher = parent; changed = true; }
-      if (product && r.product !== product) { r.product = product; changed = true; }
+      if (JSON.stringify(gurus) !== JSON.stringify(r.gurus ?? [])) { r.gurus = gurus; changed = true; }
     }
 
     // Normalize the old verbose MTA label to the canonical directory name

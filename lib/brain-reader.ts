@@ -11,6 +11,10 @@
 
 import fs from "fs";
 import path from "path";
+// Committed snapshot of the brain's canonical entities — a deterministic fallback
+// for the Promo Details dropdowns when the live directory fetch is unavailable on
+// the server. Regenerate from the Financial Publishing Directory when it changes.
+import canonicalSnapshot from "./canonical-entities.json";
 
 const BRAIN_DIR =
   process.env.BRAIN_DIR?.replace(/\/Resources\/.*$/, "") ??
@@ -371,9 +375,12 @@ export async function getCanonicalEntities(): Promise<CanonicalEntities> {
   if (_canonCache && now - _canonCache.at < 300_000) return _canonCache.data;
 
   const rows = parseDirectory(await loadPublishingDirectory());
-  const gurus = new Set<string>();
-  const publishers = new Set<string>();
-  const products = new Set<string>();
+  // Seed from the committed snapshot so the dropdowns are complete even when the
+  // live directory fetch fails on the server; live rows union on top.
+  const snap = canonicalSnapshot as CanonicalEntities;
+  const gurus = new Set<string>(snap.gurus ?? []);
+  const publishers = new Set<string>(snap.publishers ?? []);
+  const products = new Set<string>(snap.products ?? []);
   // A cell that's only a parenthetical note (e.g. "(independent)") isn't a real entity.
   const isJunk = (s: string) => !s || s.startsWith("(");
   for (const r of rows) {
@@ -393,8 +400,26 @@ export async function getCanonicalEntities(): Promise<CanonicalEntities> {
     publishers: srt(publishers),
     products: srt(products),
   };
-  _canonCache = { at: now, data };
+  // Only cache when we have a real list (snapshot guarantees non-empty).
+  if (data.gurus.length || data.publishers.length || data.products.length) {
+    _canonCache = { at: now, data };
+  }
   return data;
+}
+
+/**
+ * Find canonical gurus whose name appears in the given text (case-insensitive,
+ * whitespace-normalized). Uses the full canonical list (live ∪ snapshot), so it
+ * works even when the live directory fetch is down. Hosts are already excluded.
+ */
+export async function findCanonicalGurusInText(text: string): Promise<string[]> {
+  const { gurus } = await getCanonicalEntities();
+  const norm = (s: string) => s.toLowerCase().replace(/\s+/g, " ").trim();
+  const hay = norm(text);
+  return gurus.filter((g) => {
+    const n = norm(g);
+    return n.length >= 5 && hay.includes(n);
+  });
 }
 
 /** Strip Obsidian-specific markup that's not useful in a prompt */
