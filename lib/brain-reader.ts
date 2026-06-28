@@ -388,7 +388,10 @@ export async function getCanonicalEntities(): Promise<CanonicalEntities> {
     for (const g of r.guru.split(/\s+[+&]\s+/).map((x) => x.trim())) {
       if (!isJunk(g) && !NON_GURU_HOSTS.has(g)) gurus.add(g);
     }
-    if (!isJunk(r.parent)) publishers.add(r.parent);
+    // Strip conglomerate parentheticals ("Banyan Hill (Agora)" -> "Banyan Hill")
+    // so the publisher dropdown has one clean entry per publisher.
+    const par = stripProductCode(r.parent);
+    if (!isJunk(par)) publishers.add(par);
     if (r.publication) {
       const p = stripProductCode(r.publication);
       if (!isJunk(p)) products.add(p);
