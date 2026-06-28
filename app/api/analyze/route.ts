@@ -221,6 +221,15 @@ export async function POST(req: NextRequest) {
             const fkLine = fkScore
               ? `- **FK Reading Ease:** ${fkScore.readingEase.toFixed(1)} | **FK Grade Level:** ${fkScore.gradeLevel.toFixed(1)}`
               : "";
+            // Uniform brain linking: wikilink the canonical entities so the brain
+            // graph connects this promo to the guru/publisher/product notes.
+            const linkLines: string[] = [];
+            if (saved.publisher) linkLines.push(`- **Publisher:** [[${saved.publisher}]]`);
+            if (saved.gurus && saved.gurus.length)
+              linkLines.push(`- **Guru(s):** ${saved.gurus.map((g) => `[[${g}]]`).join(", ")}`);
+            if (saved.product) linkLines.push(`- **Product:** [[${saved.product}]]`);
+            if (saved.promoCode) linkLines.push(`- **Creative Code:** ${saved.promoCode}`);
+
             const brainContent = [
               `# ${promoTitle}`,
               "",
@@ -230,6 +239,7 @@ export async function POST(req: NextRequest) {
                 ? `- **Copy Quality Score:** ${saved.effectivenessScore}/10`
                 : "",
               fkLine,
+              ...linkLines,
               "",
               "## Headline Analysis",
               saved.sections.headline,

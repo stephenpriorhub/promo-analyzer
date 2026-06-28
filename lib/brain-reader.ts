@@ -276,7 +276,12 @@ export function parseDirectory(text: string | null): DirectoryEntry[] {
   for (const line of text.split("\n")) {
     const t = line.trim();
     if (!t.startsWith("|")) continue;
-    const cells = t.split("|").map((c) => c.trim());
+    // Protect escaped pipes inside wikilink aliases ("[[Target\|Display]]") so
+    // they don't get treated as column separators, then restore them.
+    const cells = t
+      .replace(/\\\|/g, "§PIPE§")
+      .split("|")
+      .map((c) => c.replace(/§PIPE§/g, "|").trim());
     // cells[0] is empty (leading pipe). guru=1, publication=2, parent=3
     if (cells.length < 4) continue;
     const guru = cleanCell(cells[1] ?? "");
@@ -339,6 +344,57 @@ export function buildDirectiveBlock(matches: DirectoryEntry[]): string {
     lines.push("If several are listed, choose the one whose publication/product best matches this promo.");
   }
   return lines.join("\n");
+}
+
+/** Strip a trailing product code parenthetical, e.g. "The War Room (WAR)" -> "The War Room". */
+export function stripProductCode(name: string): string {
+  return name.replace(/\s*\([^)]*\)\s*$/, "").trim();
+}
+
+export interface CanonicalEntities {
+  gurus: string[];
+  publishers: string[];
+  products: string[];
+}
+
+let _canonCache: { at: number; data: CanonicalEntities } | null = null;
+
+/**
+ * The canonical guru / publisher / product entities from the brain's Financial
+ * Publishing Directory. These are the names the brain uses (note titles), so
+ * storing them on a review lets the brain link everything uniformly via
+ * [[wikilinks]]. Hosts (e.g. Chris Johnson) are excluded from the guru list.
+ * Cached 5 min; returns empty lists gracefully if the directory is unavailable.
+ */
+export async function getCanonicalEntities(): Promise<CanonicalEntities> {
+  const now = Date.now();
+  if (_canonCache && now - _canonCache.at < 300_000) return _canonCache.data;
+
+  const rows = parseDirectory(await loadPublishingDirectory());
+  const gurus = new Set<string>();
+  const publishers = new Set<string>();
+  const products = new Set<string>();
+  // A cell that's only a parenthetical note (e.g. "(independent)") isn't a real entity.
+  const isJunk = (s: string) => !s || s.startsWith("(");
+  for (const r of rows) {
+    // Co-authored cells like "Alexander Green + Marc Lichtenfeld" → individual gurus.
+    for (const g of r.guru.split(/\s+[+&]\s+/).map((x) => x.trim())) {
+      if (!isJunk(g) && !NON_GURU_HOSTS.has(g)) gurus.add(g);
+    }
+    if (!isJunk(r.parent)) publishers.add(r.parent);
+    if (r.publication) {
+      const p = stripProductCode(r.publication);
+      if (!isJunk(p)) products.add(p);
+    }
+  }
+  const srt = (s: Set<string>) => [...s].sort((a, b) => a.localeCompare(b));
+  const data: CanonicalEntities = {
+    gurus: srt(gurus),
+    publishers: srt(publishers),
+    products: srt(products),
+  };
+  _canonCache = { at: now, data };
+  return data;
 }
 
 /** Strip Obsidian-specific markup that's not useful in a prompt */

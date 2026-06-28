@@ -1,16 +1,17 @@
 import { NextResponse } from "next/server";
-import { backfillMetadata } from "@/lib/reviews-store";
+import { backfillMetadataCanonical } from "@/lib/reviews-store";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
 /**
  * POST /api/backfill-metadata
- * One-time: fill missing publisher/gurus/product on existing reviews from
- * detection + offer parse. Idempotent — only fills blanks, never overwrites
- * a user-corrected value.
+ * Match existing reviews against the brain's Financial Publishing Directory and
+ * set publisher/gurus/product to CANONICAL names (uniform brain linking).
+ * Overwrites only on a confident directory match; fills remaining blanks from
+ * detection/offer-parse; normalizes the legacy verbose MTA label.
  */
 export async function POST() {
-  const result = backfillMetadata();
+  const result = await backfillMetadataCanonical();
   return NextResponse.json({ ok: true, ...result });
 }

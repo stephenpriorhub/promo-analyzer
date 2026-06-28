@@ -296,7 +296,7 @@ export function parseProductFromOffer(offerText: string): string | null {
     if (colonIdx === -1 || colonIdx > 40) continue;
     const label = stripped.slice(0, colonIdx).trim().toLowerCase();
     if (label === "product name" || label === "product") {
-      const val = stripped.slice(colonIdx + 1).trim();
+      const val = stripped.slice(colonIdx + 1).trim().replace(/^\*+|\*+$/g, "").trim();
       if (val && val !== "—") return val;
     }
   }
@@ -347,6 +347,63 @@ export function backfillMetadata(): { updated: number; total: number } {
   }
   if (updated) writeReviews(reviews);
   return { updated, total: reviews.length };
+}
+
+/**
+ * Canonical backfill: match each review's copy against the brain's Financial
+ * Publishing Directory and set publisher/gurus/product to the CANONICAL names
+ * (so everything links uniformly in the brain). Overwrites a value only when a
+ * confident directory match exists; otherwise keeps the existing value and, if
+ * blank, falls back to detection/offer-parse. Never clears a value to empty.
+ */
+export async function backfillMetadataCanonical(): Promise<{ updated: number; total: number; matched: number }> {
+  // Lazy import to avoid load-time cycles.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const br = require("./brain-reader") as {
+    loadPublishingDirectory: () => Promise<string | null>;
+    matchDirectoryEntities: (text: string, dir: string | null) => Array<{ guru: string; publication: string; parent: string }>;
+    stripProductCode: (s: string) => string;
+  };
+  const dirText = await br.loadPublishingDirectory();
+
+  const reviews = readReviews();
+  let updated = 0;
+  let matched = 0;
+  for (const r of reviews) {
+    const text = `${r.sections.offer ?? ""}\n${r.sections.effectiveness ?? ""}`;
+    const hits = br.matchDirectoryEntities(text, dirText);
+    let changed = false;
+
+    if (hits.length > 0) {
+      matched++;
+      // Canonical gurus (exclude hosts), publisher (parent), product (publication)
+      const gurus = Array.from(
+        new Set(hits.map((h) => h.guru).filter((g) => g && !NON_GURU_HOSTS.has(g)))
+      );
+      const parent = hits.map((h) => h.parent).find((p) => p && p.trim());
+      const product = hits.map((h) => br.stripProductCode(h.publication)).find((p) => p && p.trim());
+
+      if (gurus.length && JSON.stringify(gurus) !== JSON.stringify(r.gurus ?? [])) { r.gurus = gurus; changed = true; }
+      if (parent && r.publisher !== parent) { r.publisher = parent; changed = true; }
+      if (product && r.product !== product) { r.product = product; changed = true; }
+    }
+
+    // Normalize the old verbose MTA label to the canonical directory name
+    if (r.publisher === "Monument Traders Alliance (MTA / Oxford Group / Agora)") {
+      r.publisher = "Monument Traders Alliance";
+      changed = true;
+    }
+
+    // Fill any remaining blanks from detection / offer parse
+    const seed = seedMetadata(r);
+    if ((r.publisher == null || r.publisher === "") && seed.publisher) { r.publisher = seed.publisher; changed = true; }
+    if ((!r.gurus || r.gurus.length === 0) && seed.gurus.length) { r.gurus = seed.gurus; changed = true; }
+    if ((r.product == null || r.product === "") && seed.product) { r.product = seed.product; changed = true; }
+
+    if (changed) updated++;
+  }
+  if (updated) writeReviews(reviews);
+  return { updated, total: reviews.length, matched };
 }
 
 export function saveReview(
