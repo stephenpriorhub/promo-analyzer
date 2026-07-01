@@ -31,6 +31,26 @@ npm install
 npm run dev   # runs on http://localhost:3002
 ```
 
+## Environment Variables
+
+Set locally in `.env.local` (see `.env.example`); set in Railway for deploy.
+
+| Var | Required | Purpose |
+|---|---|---|
+| `ANTHROPIC_API_KEY` | yes | Claude API for analysis. |
+| `GITHUB_TOKEN` | recommended | GitHub PAT (repo read+write). Writes per-promo Intel notes via the Contents API **and** reads `Resources/Promo Analysis/Copywriting Principles.md` + guru profiles from the vault on every run (falls back to local `BRAIN_DIR` read when unset). |
+| `BRAIN_GITHUB_REPO` | no | Vault repo, `owner/repo`. Defaults to `stephenpriorhub/brain`. |
+| `BRAIN_API_URL` | no | Shared Brain API base URL. Defaults to `https://brain.oxfordhub.app` (brain-map). |
+| `HUB_API_TOKEN` | for ledger | Shared auth token between apps and brain-map. Required to append Promo Pattern Ledger rows; if unset the ledger write is skipped (analysis still returns). |
+| `DATA_DIR` | no | Override for `reviews.json` + uploaded files (e.g. a Railway volume). |
+
+### App-to-Brain Learning Loop
+
+On every successful analysis the analyzer teaches the brain two ways:
+
+1. **Reads** `Copywriting Principles.md` (Brain-Master-curated, read-only for the app) into the scoring prompt, so scoring improves as principles are curated.
+2. **Writes** one machine-comparable **Promo Pattern Ledger** row via the shared Brain API (`kind:"promo-ledger-row"`, `POST {BRAIN_API_URL}/api/intelligence`, header `x-hub-token`). The Brain API is the **only** writer of `Resources/Promo Analysis/Promo Pattern Ledger.md` (append-only splice). The analyzer never writes the ledger directly via the Contents API. Ledger failures are logged and never break the response.
+
 ## File Support
 
 - `.docx` — text extracted via mammoth
