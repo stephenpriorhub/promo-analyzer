@@ -9,6 +9,8 @@ import { saveReview, getTrainingExamples, updateSourceFileMeta, FILES_DIR, type 
 import { getAllLessons, buildLearningBlock } from "@/lib/learning-kb";
 import { loadBrainContext, buildBrainContextBlock, loadPublishingDirectory, buildDirectoryBlock, matchDirectoryEntities, buildDirectiveBlock, loadMarketIntelligence, buildIndustrySignalsBlock, detectGuru, detectPublisher } from "@/lib/brain-reader";
 import { parsePromoIntel, buildIntelNote, intelNoteTitle } from "@/lib/promo-intel";
+import { buildLedgerRowFromReview } from "@/lib/promo-ledger";
+import { postLedgerRow } from "@/lib/brain-api";
 import { getEnv } from "@/lib/env";
 
 export const runtime = "nodejs";
@@ -290,6 +292,21 @@ export async function POST(req: NextRequest) {
             // Fire-and-forget: write structured promo intelligence to the vault's
             // Promo Intelligence inbox for the Brain Agent to review and merge.
             const intel = parsePromoIntel(saved.sections.promoIntel);
+
+            // Fire-and-forget: append one Promo Pattern Ledger row via the shared
+            // Brain API (App-to-Brain Learning Loop §2). The Brain API is the ONLY
+            // writer of the ledger file (append-only splice) — we do NOT write it
+            // directly via the Contents API. Graceful: a failure here logs but must
+            // never break serving the analysis to the user.
+            try {
+              const ledgerRow = buildLedgerRowFromReview(saved, intel);
+              postLedgerRow(ledgerRow).catch((e) =>
+                console.warn(`[brain] Ledger write error for ${saved.id}:`, e)
+              );
+            } catch (e) {
+              console.warn(`[brain] Ledger row build error for ${saved.id}:`, e);
+            }
+
             if (intel) {
               const intelContent = buildIntelNote(
                 intel,
