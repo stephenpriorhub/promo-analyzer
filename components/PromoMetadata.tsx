@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { classifyStatColumn, formatStatValue } from "@/lib/stat-format";
+import { PROMO_TYPES, type PromoType } from "@/lib/promo-types";
 
 const NAVY = "#012479";
 const NAVY_BG = "#f0f4fc";
@@ -13,6 +14,8 @@ interface Props {
   initialPublisher?: string | null;
   initialGurus?: string[];
   initialProduct?: string | null;
+  initialPromoType?: PromoType | null;
+  initialPricePoint?: number | null;
   onUpdated?: () => void;
   /** Fires when the creative code is committed, so parents can react live. */
   onPromoCodeChange?: (code: string | null) => void;
@@ -85,10 +88,13 @@ export default function PromoMetadata({
   initialPublisher,
   initialGurus,
   initialProduct,
+  initialPromoType,
+  initialPricePoint,
   onUpdated,
   onPromoCodeChange,
 }: Props) {
   const [promoCode, setPromoCode] = useState(initialPromoCode ?? "");
+  const [promoType, setPromoType] = useState<string>(initialPromoType ?? "");
   const [publisher, setPublisher] = useState(initialPublisher ?? "");
   const [gurus, setGurus] = useState<string[]>(initialGurus ?? []);
   const [product, setProduct] = useState(initialProduct ?? "");
@@ -104,8 +110,9 @@ export default function PromoMetadata({
     setPublisher(initialPublisher ?? "");
     setGurus(initialGurus ?? []);
     setProduct(initialProduct ?? "");
+    setPromoType(initialPromoType ?? "");
     setGuruDraft("");
-  }, [reviewId, initialPromoCode, initialPublisher, initialProduct]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [reviewId, initialPromoCode, initialPublisher, initialProduct, initialPromoType]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     fetch("/api/promo-meta-options")
@@ -209,6 +216,23 @@ export default function PromoMetadata({
           options={options.products}
           onCommit={(v) => { setProduct(v); save({ product: v || null }); }}
         />
+
+        {/* Promo type — auto from price, overridable */}
+        <div className="flex flex-col gap-1">
+          <label className="text-xs font-semibold text-gray-600">
+            Promo Type
+            {initialPricePoint != null && <span className="font-normal text-gray-400"> · price ${initialPricePoint.toLocaleString()}</span>}
+          </label>
+          <select
+            value={promoType}
+            onChange={(e) => { setPromoType(e.target.value); save({ promoType: e.target.value || null }); }}
+            className="w-full text-sm rounded-md border border-gray-300 px-2 py-1.5 bg-white focus:outline-none focus:ring-2"
+            style={{ ["--tw-ring-color" as string]: NAVY_BORDER }}
+          >
+            <option value="">Auto (from price)</option>
+            {PROMO_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+          </select>
+        </div>
 
         {/* Guru(s) — multi, chips inline inside the field (matches the other inputs) */}
         <div className="flex flex-col gap-1">

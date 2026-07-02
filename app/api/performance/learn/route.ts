@@ -61,7 +61,7 @@ function ledgerRow(rec: PerformanceRecord, review: SavedReview, d: TierDerivatio
     rec.guru ?? (review.gurus ?? []).join(", "),
     d.metric,
     Number.isNaN(d.value) ? "" : String(d.value),
-    `${d.tier} (${d.tierSource}, n=${d.pool.n} ${d.pool.scope === "publication" ? d.pool.publication : "global"})`,
+    `${d.tier} (${d.tierSource}, ${d.bucket}, n=${d.pool.n})`,
     new Date().toISOString().slice(0, 10),
     rec.notes.replace(/\|/g, "/"),
   ];
@@ -72,11 +72,14 @@ export async function POST(req: NextRequest) {
   const body = (await req.json().catch(() => ({}))) as { promoCode?: string; force?: boolean };
 
   const records = getAllPerformanceRecords();
-  const derivations = deriveTiers(records);
   const reviews = getAllReviews();
   const reviewByCode = new Map(
     reviews.filter((r) => r.promoCode).map((r) => [normalizeCode(r.promoCode!), r])
   );
+  const promoTypeByCode = new Map(
+    reviews.filter((r) => r.promoCode && r.promoType).map((r) => [normalizeCode(r.promoCode!), r.promoType!])
+  );
+  const derivations = deriveTiers(records, promoTypeByCode);
 
   const targets = records.filter((rec) => {
     if (body.promoCode) return normalizeCode(rec.promoCode) === normalizeCode(body.promoCode);
@@ -98,27 +101,28 @@ export async function POST(req: NextRequest) {
     const reviewName = review.displayName ?? review.filename.replace(/\.[^.]+$/, "");
     const autoReason = `Real result (${rec.promoCode}): ${describeDerivation(d)} → tier ${d.tier}. Raw stats — ${statsSummary(rec)}.${rec.notes ? ` Publisher notes: ${rec.notes}` : ""}`;
 
-    // Merge — never clobber Stephen's own assessment, written reasoning, or a
-    // performance score he entered by hand. Re-teaching replaces this code's
-    // own "Real result (...)" line instead of appending a duplicate.
+    // Publisher rule: real data always drives the performance score. Because
+    // this promo HAS data (it matched + tiered), the data-derived score wins —
+    // a hand-entered score only stands in when there's no data at all (those
+    // promos never reach this pipeline). The publisher's written notes and
+    // myScore are preserved; re-teaching replaces this code's own
+    // "Real result (...)" line instead of appending a duplicate.
     const existing = review.training;
-    const humanScored =
-      existing?.performanceScore != null && existing.source !== "learned";
     const priorReasoning = (existing?.reasoning ?? "")
       .split("\n")
       .filter((line) => !line.startsWith(`Real result (${rec.promoCode})`))
       .join("\n")
       .trim();
     updateReviewTraining(review.id, {
-      promoType: existing?.promoType ?? asPromoType(rec.promoType),
-      performanceScore: humanScored ? existing!.performanceScore : d.performanceScore,
+      promoType: review.promoType ?? existing?.promoType ?? asPromoType(rec.promoType),
+      performanceScore: d.performanceScore, // data wins
       myScore: existing?.myScore ?? null,
       reasoning: priorReasoning ? `${priorReasoning}\n\n${autoReason}` : autoReason,
       lastUpdated: new Date().toISOString(),
       calibratedEffectiveness: existing?.calibratedEffectiveness,
       // Gold-standard is a publisher judgment — never auto-set from a derived tier.
       isBestPerformer: existing?.isBestPerformer ?? false,
-      source: humanScored ? (existing!.source ?? "publisher") : "learned",
+      source: "learned",
     });
 
     const extract = await extractAndStoreLessons({

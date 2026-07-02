@@ -241,6 +241,8 @@ export default function Home() {
   const displayPublisher: string | null = activeReview?.publisher ?? null;
   const displayGurus: string[] = activeReview?.gurus ?? [];
   const displayProduct: string | null = activeReview?.product ?? null;
+  const displayPromoType = activeReview?.promoType ?? null;
+  const displayPricePoint: number | null = activeReview?.pricePoint ?? null;
   const displayCalibratedEffectiveness: string | null =
     activeReview?.training?.calibratedEffectiveness ?? null;
 
@@ -433,6 +435,8 @@ export default function Home() {
                 initialPublisher={displayPublisher}
                 initialGurus={displayGurus}
                 initialProduct={displayProduct}
+                initialPromoType={displayPromoType}
+                initialPricePoint={displayPricePoint}
                 onScoreApplied={() => setRefreshReviews((n) => n + 1)}
                 onReanalyzed={handleReanalyzed}
                 onRename={(newName) => {

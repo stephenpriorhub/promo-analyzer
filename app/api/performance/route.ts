@@ -27,7 +27,7 @@ export const runtime = "nodejs";
 export interface PerformanceView {
   record: ReturnType<typeof getAllPerformanceRecords>[number];
   derivation: TierDerivation | null;
-  match: { reviewId: string; reviewName: string; hasTraining: boolean; copyScore: number | null } | null;
+  match: { reviewId: string; reviewName: string; hasTraining: boolean; copyScore: number | null; promoType: string | null } | null;
 }
 
 /**
@@ -57,11 +57,15 @@ function conversionBaseline(records: ReturnType<typeof getAllPerformanceRecords>
 
 function buildViews(): { views: PerformanceView[]; unmatchedReviews: Array<{ id: string; name: string; promoCode: string | null }> } {
   const records = getAllPerformanceRecords();
-  const derivations = deriveTiers(records);
   const reviews = getAllReviews();
   const reviewByCode = new Map(
     reviews.filter((r) => r.promoCode).map((r) => [normalizeCode(r.promoCode!), r])
   );
+  // Promo type per creative code drives which metric ranks each record.
+  const promoTypeByCode = new Map(
+    reviews.filter((r) => r.promoCode && r.promoType).map((r) => [normalizeCode(r.promoCode!), r.promoType!])
+  );
+  const derivations = deriveTiers(records, promoTypeByCode);
   const views: PerformanceView[] = records.map((record) => {
     const review = reviewByCode.get(normalizeCode(record.promoCode)) ?? null;
     return {
@@ -73,6 +77,7 @@ function buildViews(): { views: PerformanceView[]; unmatchedReviews: Array<{ id:
             reviewName: review.displayName ?? review.filename.replace(/\.[^.]+$/, ""),
             hasTraining: review.training != null,
             copyScore: review.effectivenessScore,
+            promoType: review.promoType ?? null,
           }
         : null,
     };

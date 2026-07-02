@@ -25,7 +25,8 @@ interface TierDerivation {
   tier: PerformanceTier;
   tierSource: "derived" | "manual";
   scheme: "5-tier" | "3-tier";
-  pool: { scope: "publication" | "global"; publication: string | null; n: number };
+  bucket: "acquisition" | "monetization";
+  pool: { bucket: "acquisition" | "monetization"; n: number };
 }
 
 interface PerfRecord {
@@ -43,7 +44,7 @@ interface PerfRecord {
 interface View {
   record: PerfRecord;
   derivation: TierDerivation | null;
-  match: { reviewId: string; reviewName: string; hasTraining: boolean; copyScore: number | null } | null;
+  match: { reviewId: string; reviewName: string; hasTraining: boolean; copyScore: number | null; promoType: string | null } | null;
 }
 
 interface Baseline {
@@ -191,6 +192,7 @@ export default function PerformanceTab() {
     if (key === "code") return v.record.promoCode.toLowerCase();
     if (key === "publication") return (v.record.publication ?? "").toLowerCase();
     if (key === "guru") return (v.record.guru ?? "").toLowerCase();
+    if (key === "type") return (v.match!.promoType ?? "").toLowerCase();
     if (key === "copy") return v.match!.copyScore;
     if (key === "tier") return v.derivation ? TIER_RANK[v.derivation.tier] : null;
     if (key.startsWith("stat:")) {
@@ -292,6 +294,7 @@ export default function PerformanceTab() {
                 {th("code", "Creative Code")}
                 {th("publication", "Publication")}
                 {th("guru", "Guru")}
+                {th("type", "Type")}
                 {th("copy", "Copy Score")}
                 {th("tier", "Tier")}
                 {statCols.map((c) => th(`stat:${c}`, c, "text-right"))}
@@ -307,6 +310,7 @@ export default function PerformanceTab() {
                   <td className="px-3 py-2 font-mono text-xs">{record.promoCode}</td>
                   <td className="px-3 py-2">{record.publication ?? <span className="text-gray-300">—</span>}</td>
                   <td className="px-3 py-2">{record.guru ?? <span className="text-gray-300">—</span>}</td>
+                  <td className="px-3 py-2 text-xs">{match!.promoType ?? <span className="text-gray-300">—</span>}</td>
                   <td className="px-3 py-2 text-right">{match!.copyScore != null ? match!.copyScore.toFixed(1) : <span className="text-gray-300">—</span>}</td>
                   <td className="px-3 py-2">
                     {derivation ? (
@@ -359,6 +363,7 @@ function cohortLine(d: TierDerivation): string {
   const rank = d.percentile >= 0.5
     ? `top ${Math.max(Math.round((1 - d.percentile) * 100), 1)}%`
     : `bottom ${Math.max(Math.round(d.percentile * 100), 1)}%`;
-  const where = d.pool.scope === "publication" ? `${d.pool.publication} promos` : "promos, all pubs";
-  return `${rank} by ${d.metric} · n=${d.pool.n} ${where} · ${d.scheme}`;
+  const kind = d.bucket === "acquisition" ? "order volume" : "revenue";
+  const cohort = d.bucket === "acquisition" ? "front-end promos" : "backend/mega promos";
+  return `${rank} by ${kind} · n=${d.pool.n} ${cohort} · ${d.scheme}`;
 }

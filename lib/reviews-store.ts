@@ -22,6 +22,7 @@ export { PROMO_TYPES, type PromoType } from "./promo-types";
 import type { SubScore } from "./score";
 import { deriveScore } from "./score";
 import { ANALYSIS_MODEL } from "./models";
+import { extractPricePoint, classifyByPrice } from "./promo-classify";
 
 export type InputType = "visual-pdf" | "docx" | "text";
 
@@ -50,6 +51,9 @@ export interface SavedReview {
   date: string;
   promoRunStartDate?: string | null; // approx date the promo started running (captured at upload)
   promoCode?: string | null; // join key to the external performance sheet (optional; only some promos have one)
+  promoType?: PromoType | null;     // canonical type — price-derived unless set manually
+  promoTypeSource?: "price" | "manual"; // manual always wins over the price rule
+  pricePoint?: number | null;       // headline price parsed from the offer (drives the type rule)
   publisher?: string | null; // editable; auto-seeded from detection, user-correctable
   gurus?: string[];          // editable; editors/strategists only (hosts excluded)
   product?: string | null;   // editable; the promoted product/publication
@@ -143,7 +147,7 @@ export function getTrainingExamples(): Array<{
       (r.training!.performanceScore !== null && r.training!.performanceScore >= 9);
     return {
       name,
-      promoType: r.training!.promoType ?? null,
+      promoType: r.promoType ?? r.training!.promoType ?? null,
       guru: detectGuruFromReview(r),
       predictedScore: r.effectivenessScore,
       performanceScore: r.training!.performanceScore,
@@ -204,7 +208,7 @@ export function getCalibrationStats(): CalibrationStats {
       // hindsight re-evaluation can't make predicted≈actual and inflate accuracy.
       predicted: (r.predictedScore ?? r.effectivenessScore) as number,
       actual: r.training!.performanceScore as number,
-      promoType: r.training!.promoType ?? "Unspecified",
+      promoType: r.promoType ?? r.training!.promoType ?? "Unspecified",
       guru:
         detectGuruFromReview(r) ?? "Unknown",
     }));
@@ -472,6 +476,7 @@ export function saveReview(
     effectivenessScore: finalScore,
     predictedScore: finalScore, // calibration baseline — the model's copy-based prediction
     scoringModel: ANALYSIS_MODEL,
+    pricePoint: extractPricePoint(sections.offer),
     subScores: subScores.length > 0 ? subScores : undefined,
     inputType,
     fkReadingEase,
@@ -485,6 +490,13 @@ export function saveReview(
   review.publisher = seed.publisher;
   review.gurus = seed.gurus;
   review.product = seed.product;
+
+  // Derive promo type from the price point (manual can override later).
+  const derivedType = classifyByPrice(review.pricePoint ?? null);
+  if (derivedType) {
+    review.promoType = derivedType;
+    review.promoTypeSource = "price";
+  }
 
   reviews.push(review);
   writeReviews(reviews);
@@ -579,6 +591,42 @@ export function updateReviewRunDate(id: string, promoRunStartDate: string | null
   reviews[idx].promoRunStartDate = promoRunStartDate;
   writeReviews(reviews);
   return true;
+}
+
+/** Manual promo-type override — wins over the price rule permanently. */
+export function updateReviewPromoType(id: string, promoType: PromoType | null): boolean {
+  const reviews = readReviews();
+  const idx = reviews.findIndex((r) => r.id === id);
+  if (idx === -1) return false;
+  reviews[idx].promoType = promoType;
+  reviews[idx].promoTypeSource = promoType ? "manual" : undefined;
+  writeReviews(reviews);
+  return true;
+}
+
+/**
+ * One-time backfill: set promoType from the offer price on every review that
+ * hasn't been manually typed. Also fills pricePoint where missing. Returns how
+ * many were (re)classified.
+ */
+export function backfillPromoTypes(): { updated: number; total: number } {
+  const reviews = readReviews();
+  let updated = 0;
+  for (const r of reviews) {
+    if (r.promoTypeSource === "manual") continue; // never override a manual choice
+    const price = r.pricePoint ?? extractPricePoint(r.sections.offer);
+    const type = classifyByPrice(price);
+    let changed = false;
+    if (price != null && r.pricePoint !== price) { r.pricePoint = price; changed = true; }
+    if (type && (r.promoType !== type || r.promoTypeSource !== "price")) {
+      r.promoType = type;
+      r.promoTypeSource = "price";
+      changed = true;
+    }
+    if (changed) updated++;
+  }
+  if (updated) writeReviews(reviews);
+  return { updated, total: reviews.length };
 }
 
 export function updateReviewPromoCode(id: string, promoCode: string | null): boolean {

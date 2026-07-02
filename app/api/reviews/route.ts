@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAllReviews, deleteReview, renameReview, updateReviewTraining, updateReviewRunDate, updateReviewPromoCode, updateReviewPublisher, updateReviewGurus, updateReviewProduct, getReviewById, getCalibrationStats } from "@/lib/reviews-store";
+import { getAllReviews, deleteReview, renameReview, updateReviewTraining, updateReviewRunDate, updateReviewPromoCode, updateReviewPublisher, updateReviewGurus, updateReviewProduct, updateReviewPromoType, getReviewById, getCalibrationStats, PROMO_TYPES, type PromoType } from "@/lib/reviews-store";
 import { detectGuru, detectPublisher } from "@/lib/brain-reader";
 import { extractAndStoreLessons } from "@/lib/extract-lessons";
 
@@ -30,7 +30,7 @@ export async function DELETE(req: NextRequest) {
 
 export async function PATCH(req: NextRequest) {
   const body = await req.json();
-  const { id, displayName, training, effectiveness, promoRunStartDate, promoCode, publisher, gurus, product } = body;
+  const { id, displayName, training, effectiveness, promoRunStartDate, promoCode, publisher, gurus, product, promoType } = body;
 
   if (!id) {
     return NextResponse.json({ error: "id required" }, { status: 400 });
@@ -63,6 +63,14 @@ export async function PATCH(req: NextRequest) {
 
   if (product !== undefined) {
     const ok = updateReviewProduct(id, product || null);
+    if (!ok) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
+  if (promoType !== undefined) {
+    if (promoType !== null && !(PROMO_TYPES as readonly string[]).includes(promoType)) {
+      return NextResponse.json({ error: "Invalid promoType" }, { status: 400 });
+    }
+    const ok = updateReviewPromoType(id, (promoType || null) as PromoType | null);
     if (!ok) return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 

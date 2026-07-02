@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import type { AnalysisSections, TrainingData, InputType } from "@/lib/reviews-store";
+import type { PromoType } from "@/lib/promo-types";
 import type { SubScore } from "@/lib/score";
 import type { FKScore } from "@/lib/fk-score";
 import ScoreBadges from "./ScoreBadges";
@@ -38,6 +39,8 @@ interface Props {
   initialPublisher?: string | null;
   initialGurus?: string[];
   initialProduct?: string | null;
+  initialPromoType?: PromoType | null;
+  initialPricePoint?: number | null;
   onScoreApplied?: () => void;
   onRename?: (newName: string) => void;
   onReanalyzed?: (sections: AnalysisSections, fkScore: FKScore | null) => void;
@@ -131,6 +134,8 @@ export default function AnalysisResults({
   initialPublisher,
   initialGurus,
   initialProduct,
+  initialPromoType,
+  initialPricePoint,
   onScoreApplied,
   onRename,
   onReanalyzed,
@@ -374,8 +379,8 @@ export default function AnalysisResults({
 
       <ProgressBar sections={sections} streaming={streaming} pct={pct} />
 
-      {/* Real-world results — shown only when a creative code is set and data exists */}
-      {reviewId && !streaming && <RealResults promoCode={livePromoCode} />}
+      {/* Real-world results when a creative code has data; predicted score otherwise */}
+      {reviewId && !streaming && <RealResults promoCode={livePromoCode} reviewId={reviewId} />}
 
       {/* Tabs */}
       <div className="border-b" style={{ borderColor: NAVY_BORDER }}>
@@ -433,6 +438,8 @@ export default function AnalysisResults({
                 initialPublisher={initialPublisher}
                 initialGurus={initialGurus}
                 initialProduct={initialProduct}
+                initialPromoType={initialPromoType}
+                initialPricePoint={initialPricePoint}
                 onUpdated={onScoreApplied}
                 onPromoCodeChange={setLivePromoCode}
               />

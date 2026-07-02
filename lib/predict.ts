@@ -173,6 +173,54 @@ export function leaveOneOutAccuracy(pairs: TrainingPair[]): { accuracy: number; 
 /**
  * Compute the outlook for a review. Self is always excluded from the pool.
  */
+export interface PredictedPerformance {
+  score: number;          // 1–10 predicted real-world performance
+  n: number;              // comparable promos (with real results) used
+  neighbors: number;      // how many nearest comparables informed it
+  confidence: "low" | "medium" | "high";
+}
+
+/**
+ * Predict a 1–10 real-world performance score for a promo that has NO real
+ * data, from the real outcomes of the most copy-similar promos that DO. The
+ * neighbors are chosen by 8-dimension copy-craft similarity, so the estimate is
+ * "promos whose copy looks like this one scored X in the real world." Returns
+ * null until there are enough real-outcome comparables to be meaningful.
+ */
+export function predictPerformanceScore(review: SavedReview): PredictedPerformance | null {
+  const vector = toVector(review.subScores);
+  if (!vector) return null;
+
+  const pairs = getAllReviews()
+    .filter((r) => r.id !== review.id)
+    .map(toPair)
+    .filter((p): p is TrainingPair => p !== null);
+  if (pairs.length < MIN_COMPARABLES) return null;
+
+  const subject = {
+    vector,
+    guru: (review.gurus ?? [])[0] ?? null,
+    publisher: review.publisher ?? null,
+    promoType: review.promoType ?? review.training?.promoType ?? null,
+  };
+  const k = kFor(pairs.length);
+  const nbs = neighborsOf(subject, pairs, k).filter((nb) => nb.distance <= SIMILARITY_DIST_MAX);
+  if (nbs.length < 3) return null;
+
+  // Distance-weighted average of neighbor real outcomes.
+  let wsum = 0;
+  let vsum = 0;
+  for (const nb of nbs) {
+    const w = 1 / (1 + nb.distance);
+    wsum += w;
+    vsum += w * nb.performanceScore;
+  }
+  const score = Math.round((vsum / wsum) * 10) / 10;
+  const confidence = pairs.length >= MIN_PREDICTION_PAIRS && nbs.length >= 5 ? "high"
+    : nbs.length >= 4 ? "medium" : "low";
+  return { score, n: pairs.length, neighbors: nbs.length, confidence };
+}
+
 export function computeOutlook(review: SavedReview): OutlookResult {
   const off: OutlookResult = { mode: "off", n: 0, comparables: [], disclaimer: "" };
 

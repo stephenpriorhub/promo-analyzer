@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getPromoStats, isPromoStatsConfigured, normalizeCode } from "@/lib/promo-stats";
 import { getAllPerformanceRecords } from "@/lib/performance-db";
 import { deriveTiers, describeDerivation } from "@/lib/performance-tier";
+import { getAllReviews } from "@/lib/reviews-store";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -33,7 +34,12 @@ export async function GET(req: NextRequest) {
   // Tier context from the imported dataset (needs peers to rank against)
   let tier: { tier: string; line: string } | null = null;
   if (record) {
-    const d = deriveTiers(records).get(record.promoCode);
+    const promoTypeByCode = new Map(
+      getAllReviews()
+        .filter((r) => r.promoCode && r.promoType)
+        .map((r) => [normalizeCode(r.promoCode!), r.promoType!])
+    );
+    const d = deriveTiers(records, promoTypeByCode).get(record.promoCode);
     if (d) tier = { tier: d.tier, line: describeDerivation(d) };
   }
 

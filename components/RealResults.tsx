@@ -27,8 +27,16 @@ const TIER_STYLE: Record<string, { bg: string; fg: string; label: string }> = {
   failed: { bg: "#fee2e2", fg: "#991b1b", label: "Failed" },
 };
 
-export default function RealResults({ promoCode }: { promoCode: string | null }) {
+interface Predicted {
+  score: number;
+  n: number;
+  neighbors: number;
+  confidence: "low" | "medium" | "high";
+}
+
+export default function RealResults({ promoCode, reviewId }: { promoCode: string | null; reviewId?: string | null }) {
   const [data, setData] = useState<StatsResponse | null>(null);
+  const [predicted, setPredicted] = useState<Predicted | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -44,12 +52,40 @@ export default function RealResults({ promoCode }: { promoCode: string | null })
         /* soft — panel just stays hidden */
       }
     })();
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, [promoCode]);
 
-  if (!promoCode?.trim() || !data?.stats) return null;
+  // When there's no real data, fetch a predicted performance score for context.
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      if (!reviewId || data?.stats) { if (!cancelled) setPredicted(null); return; }
+      try {
+        const res = await fetch(`/api/predict?reviewId=${encodeURIComponent(reviewId)}`);
+        if (!cancelled && res.ok) setPredicted((await res.json()).predicted ?? null);
+      } catch {
+        /* soft */
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [reviewId, data?.stats]);
+
+  // No real data → show the predicted score panel if we have one.
+  if (!promoCode?.trim() || !data?.stats) {
+    if (!predicted) return null;
+    return (
+      <div className="rounded-lg border px-4 py-3" style={{ borderColor: "#e2d9c8", background: "#fdfaf3" }}>
+        <div className="flex items-center gap-2 flex-wrap">
+          <h3 className="text-sm font-semibold" style={{ color: "#7c5e10" }}>Predicted Performance</h3>
+          <span className="text-lg font-bold" style={{ color: NAVY }}>{predicted.score}/10</span>
+          <span className="text-xs text-gray-400">({predicted.confidence} confidence)</span>
+        </div>
+        <p className="text-[11px] text-gray-500 mt-1">
+          Estimated from the real results of the {predicted.neighbors} most copy-similar promos (of {predicted.n} with known outcomes). No real data for this promo yet — set its creative code once it runs to replace this with actuals. Directional only; copy is a minority of what drives performance.
+        </p>
+      </div>
+    );
+  }
 
   const entries = Object.entries(data.stats.stats).filter(([, v]) => v.trim());
   if (entries.length === 0) return null;

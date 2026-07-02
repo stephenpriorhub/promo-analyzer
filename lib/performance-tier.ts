@@ -2,24 +2,33 @@
  * Performance tiering — turns raw sheet stats into a defensible tier + 1-10
  * performance score by percentile ranking.
  *
- * Rules (per Claims Integrity review, 2026-07-02) that keep this honest:
- *   - A record is ONLY compared against records ranked on the SAME metric.
- *   - Metric auto-detection is a direction-known whitelist — unknown columns
- *     are display-only and never drive a tier.
- *   - Rate metrics (conversion, EPC, rev-per-name) rank before absolute-dollar
- *     metrics; absolute metrics (revenue, orders) may only rank WITHIN a
- *     publication — revenue rank across pubs is mostly list-size rank.
+ * Rules (publisher direction 2026-07-02) that keep this honest:
+ *   - A promo is judged by its TYPE's metric: front-ends (acquisition) by
+ *     ORDER VOLUME, backends & mega-bundles (monetization) by REVENUE.
+ *   - It is ranked only against promos in the SAME bucket, so a front-end's
+ *     order count is never compared to a mega-bundle's revenue.
+ *   - Type comes from the analyzed promo when matched; for raw industry rows
+ *     it's inferred from the Avg. Cart Value price proxy — so the full dataset
+ *     forms the baseline pool.
  *   - Cohort ladder: n >= 20 → full 5-tier scheme; 8 <= n < 20 → 3-tier scheme
- *     (no gold_standard/failed claims without real deciles); n < 8 → no tier,
- *     "insufficient comparables".
- *   - Every derivation carries its pool (scope + n + metric) so the UI and the
- *     brain always show HOW the tier was computed, and that it is relative and
- *     recomputed as data arrives.
+ *     (no gold_standard/failed claims without real deciles); n < 8 → no tier.
+ *   - Every derivation carries its bucket + metric + n so the UI and brain show
+ *     HOW the tier was computed, and that it recomputes as data arrives.
  */
 
 import type { PerformanceTier } from "./learning-kb";
 import type { PerformanceRecord } from "./performance-db";
+import type { PromoType } from "./promo-types";
 import { classifyStatColumn, normalizedStatNumber } from "./stat-format";
+import {
+  bucketForType,
+  classifyRowByCartValue,
+  findOrdersColumn,
+  findRevenueColumn,
+  BUCKET_METRIC,
+  type PerfBucket,
+} from "./promo-classify";
+import { normalizeCode } from "./promo-stats";
 
 /**
  * Metric whitelist, priority order, all higher-is-better. First hit wins.
@@ -100,7 +109,9 @@ export interface TierDerivation {
   tierSource: "derived" | "manual";
   /** "5-tier" when the pool supports deciles, "3-tier" for 8-19 pools. */
   scheme: "5-tier" | "3-tier";
-  pool: { scope: "publication" | "global"; publication: string | null; n: number };
+  /** How this promo was judged — acquisition (order volume) vs monetization (revenue). */
+  bucket: PerfBucket;
+  pool: { bucket: PerfBucket; n: number };
 }
 
 /** Percentile → tier, full scheme (pool n >= 20). */
@@ -128,63 +139,52 @@ const TIER_SCORE: Record<PerformanceTier, number> = {
 };
 
 /**
- * Derive tiers for every record that has a usable whitelisted metric and a
- * large-enough same-metric pool. Pure — takes the full record set so pools and
- * percentiles are consistent within one call.
+ * Derive tiers, bucketing each promo by type and ranking it on that bucket's
+ * metric (acquisition→orders, monetization→revenue) against same-bucket peers.
+ * `promoTypeByCode` supplies the type for analyzed promos (keyed by normalized
+ * creative code); raw industry rows fall back to the cart-value price proxy.
+ * Pure — takes the full record set so pools/percentiles are consistent.
  */
-export function deriveTiers(records: PerformanceRecord[]): Map<string, TierDerivation> {
+export function deriveTiers(
+  records: PerformanceRecord[],
+  promoTypeByCode?: Map<string, PromoType>
+): Map<string, TierDerivation> {
   const valued = records
     .map((rec) => {
-      const detected = detectPrimaryMetric(rec);
-      if (!detected) return null;
-      // Rank on the unit-normalized value (percent → points) so ratio-scale and
-      // point-scale cells in the same column are compared on one scale.
-      const value = normalizedStatNumber(rec.stats[detected.metric], classifyStatColumn(detected.metric));
+      const type =
+        promoTypeByCode?.get(normalizeCode(rec.promoCode)) ?? classifyRowByCartValue(rec.stats);
+      const bucket = bucketForType(type);
+      if (!bucket) return null;
+      const metric =
+        bucket === "acquisition" ? findOrdersColumn(rec.stats) : findRevenueColumn(rec.stats);
+      if (!metric) return null;
+      const value = normalizedStatNumber(rec.stats[metric], classifyStatColumn(metric));
       if (value == null) return null;
-      return { rec, metric: detected.metric, kind: detected.kind, value };
+      return { rec, bucket, metric, value };
     })
     .filter((v): v is NonNullable<typeof v> => v !== null);
 
-  // Group by normalized metric so pools never mix metrics
-  const byMetric = new Map<string, typeof valued>();
+  // Pool by bucket — front-ends rank against front-ends, backends/megas together
+  const byBucket = new Map<PerfBucket, typeof valued>();
   for (const v of valued) {
-    const key = normHeader(v.metric);
-    const arr = byMetric.get(key) ?? [];
+    const arr = byBucket.get(v.bucket) ?? [];
     arr.push(v);
-    byMetric.set(key, arr);
+    byBucket.set(v.bucket, arr);
   }
 
   const out = new Map<string, TierDerivation>();
-  for (const group of byMetric.values()) {
-    for (const v of group) {
-      const pubPool = v.rec.publication
-        ? group.filter((g) => g.rec.publication === v.rec.publication)
-        : [];
-      // Publication pool when big enough; global fallback ONLY for rate
-      // metrics — absolute dollars never rank across publications.
-      let pool: typeof group;
-      let scope: "publication" | "global";
-      if (pubPool.length >= MIN_TIER_POOL) {
-        pool = pubPool;
-        scope = "publication";
-      } else if (v.kind === "rate" && group.length >= MIN_TIER_POOL) {
-        pool = group;
-        scope = "global";
-      } else {
-        continue; // insufficient comparables — no tier claim
-      }
-
+  for (const [bucket, pool] of byBucket) {
+    if (pool.length < MIN_TIER_POOL) continue; // too few peers to rank honestly
+    const scheme: "5-tier" | "3-tier" = pool.length >= FULL_TIER_POOL ? "5-tier" : "3-tier";
+    for (const v of pool) {
       const peers = pool.filter((p) => p.rec.promoCode !== v.rec.promoCode);
       if (peers.length === 0) continue;
       const beaten = peers.filter((p) => p.value < v.value).length;
       const tied = peers.filter((p) => p.value === v.value).length;
       const percentile = (beaten + tied / 2) / peers.length;
-      const scheme: "5-tier" | "3-tier" = pool.length >= FULL_TIER_POOL ? "5-tier" : "3-tier";
       const derivedTier = scheme === "5-tier" ? fullTier(percentile) : reducedTier(percentile);
       const tier = v.rec.tierOverride ?? derivedTier;
-      // 3-tier pools may not make decile claims: clamp the score away from the
-      // gold_standard (>=9) and failed (<=2) bands that downstream lesson
-      // extraction and best-performer flags key off.
+      // 3-tier pools may not make decile claims: clamp away from gold/failed bands.
       const rawScore = Math.round((1 + 9 * percentile) * 10) / 10;
       const performanceScore =
         v.rec.tierOverride != null
@@ -195,33 +195,36 @@ export function deriveTiers(records: PerformanceRecord[]): Map<string, TierDeriv
       out.set(v.rec.promoCode, {
         promoCode: v.rec.promoCode,
         metric: v.metric,
-        metricKind: v.kind,
+        metricKind: bucket === "acquisition" ? "absolute" : "absolute",
         value: v.value,
         percentile: Math.round(percentile * 1000) / 1000,
         performanceScore,
         tier,
         tierSource: v.rec.tierOverride != null ? "manual" : "derived",
         scheme,
-        pool: { scope, publication: scope === "publication" ? v.rec.publication : null, n: pool.length },
+        bucket,
+        pool: { bucket, n: pool.length },
       });
     }
   }
 
-  // Records with a manual tier override but no derivable pool still get a tier
-  // (Stephen's judgment stands in where the data can't rank).
+  // Records with a manual tier override but no derivable pool still get a tier.
   for (const rec of records) {
     if (rec.tierOverride && !out.has(rec.promoCode)) {
+      const type = promoTypeByCode?.get(normalizeCode(rec.promoCode)) ?? classifyRowByCartValue(rec.stats);
+      const bucket = bucketForType(type) ?? "monetization";
       out.set(rec.promoCode, {
         promoCode: rec.promoCode,
         metric: "manual",
-        metricKind: "rate",
+        metricKind: "absolute",
         value: NaN,
         percentile: NaN,
         performanceScore: TIER_SCORE[rec.tierOverride],
         tier: rec.tierOverride,
         tierSource: "manual",
         scheme: "3-tier",
-        pool: { scope: "global", publication: null, n: 0 },
+        bucket,
+        pool: { bucket, n: 0 },
       });
     }
   }
@@ -234,9 +237,10 @@ export function rankPhrase(percentile: number): string {
   return `bottom ${Math.max(Math.round(percentile * 100), 1)}%`;
 }
 
-/** Human-readable cohort line, e.g. "top 12% by EPC among 23 War Room promos". */
+/** Human-readable cohort line, e.g. "top 12% by order volume among 23 acquisition promos". */
 export function describeDerivation(d: TierDerivation): string {
   if (d.metric === "manual") return "manual tier set by publisher";
-  const where = d.pool.scope === "publication" ? `${d.pool.publication} promos` : "promos (all publications)";
-  return `${rankPhrase(d.percentile)} by ${d.metric} among ${d.pool.n} ${where}`;
+  const kind = BUCKET_METRIC[d.bucket].label;
+  const cohort = d.bucket === "acquisition" ? "front-end promos" : "backend/mega-bundle promos";
+  return `${rankPhrase(d.percentile)} by ${kind} among ${d.pool.n} ${cohort}`;
 }
