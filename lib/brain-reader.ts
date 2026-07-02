@@ -364,6 +364,8 @@ export interface CanonicalEntities {
   products: string[];
   /** Canonical-guru (lowercase) → Parent Company. Offline fallback for resolvePublisherForGurus. */
   guruPublisher?: Record<string, string>;
+  /** Normalized publication/product (lowercase, no code) → Parent Company. Offline fallback for resolvePublisherForProduct. */
+  publicationPublisher?: Record<string, string>;
 }
 
 let _canonCache: { at: number; data: CanonicalEntities } | null = null;
@@ -470,6 +472,38 @@ export async function resolvePublisherForGurus(gurus: string[]): Promise<string 
   for (const g of gurus) {
     const hit = byGuru.get(canonicalGuruName(g).toLowerCase());
     if (hit) return hit;
+  }
+  return null;
+}
+
+/** Normalize a publication/product name for matching (drop the trailing "(CODE)" too). */
+function normPub(s: string): string {
+  return stripProductCode(s).toLowerCase().replace(/\s+/g, " ").trim();
+}
+
+/**
+ * Authoritative publisher for a promo's PRODUCT/publication name (directory ∪
+ * snapshot, live overrides). A product identifies its publisher unambiguously —
+ * unlike a guru who may merely be *mentioned* — so callers should try this
+ * BEFORE guru resolution. Handles former-name aliases carried in the directory
+ * (e.g. "Trade of the Day Plus" → Monument Traders Alliance). Null if unknown.
+ */
+export async function resolvePublisherForProduct(product: string | null | undefined): Promise<string | null> {
+  if (!product || !product.trim()) return null;
+  const byPub = new Map<string, string>();
+  const snap = (canonicalSnapshot as CanonicalEntities).publicationPublisher ?? {};
+  for (const [p, parent] of Object.entries(snap)) if (parent) byPub.set(p, parent);
+  for (const r of parseDirectory(await loadPublishingDirectory())) {
+    const parent = stripProductCode(r.parent);
+    if (!parent || parent.startsWith("(") || !r.publication) continue;
+    byPub.set(normPub(r.publication), parent); // live wins
+  }
+  const key = normPub(product);
+  if (byPub.has(key)) return byPub.get(key)!;
+  // Loose containment either direction (handles "Trade of the Day Plus" vs the
+  // alias row "Trade of the Day Plus (Monument Trend Advisory)").
+  for (const [pub, parent] of byPub) {
+    if (pub.length >= 6 && (pub.includes(key) || key.includes(pub))) return parent;
   }
   return null;
 }
