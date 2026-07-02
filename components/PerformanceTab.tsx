@@ -1,16 +1,17 @@
 "use client";
 
 /**
- * Performance tab — real-world promo results by creative code.
+ * Performance tab — analyzed promos that have real-world results.
  *
- * Import (CSV export or Google Sheet sync) → enrich rows with the Agora
- * publication / guru context → link to analyzed promos → Teach the Brain.
- * Tiers are relative, recomputed on every load, and always shown WITH their
- * comparison cohort (metric + pool) so a tier is a statistic, not a grade.
+ * The main table lists ONLY promos you've analyzed whose creative code matches
+ * a row in the performance data, with their complete stats, sortable, default
+ * sorted by conversion rate. The full industry dataset stays loaded as baseline
+ * context (what conversion rates are achievable) and powers tier ranking, but
+ * isn't listed row-by-row — it's context, not the subject.
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { classifyStatColumn, formatStatValue } from "@/lib/stat-format";
+import { classifyStatColumn, formatStatValue, normalizedStatNumber, toNumber } from "@/lib/stat-format";
 import type { PerformanceTier } from "@/lib/learning-kb";
 
 const NAVY = "#012479";
@@ -42,12 +43,20 @@ interface PerfRecord {
 interface View {
   record: PerfRecord;
   derivation: TierDerivation | null;
-  match: { reviewId: string; reviewName: string; hasTraining: boolean } | null;
+  match: { reviewId: string; reviewName: string; hasTraining: boolean; copyScore: number | null } | null;
+}
+
+interface Baseline {
+  n: number;
+  median: number;
+  top10: number;
+  top1: number;
 }
 
 interface ApiData {
   views: View[];
   unmatchedReviews: Array<{ id: string; name: string; promoCode: string | null }>;
+  baseline: Baseline | null;
   sheetConfigured: boolean;
   asOf: string;
 }
@@ -59,23 +68,18 @@ const TIER_STYLE: Record<PerformanceTier, { bg: string; fg: string; label: strin
   weak: { bg: "#ffedd5", fg: "#9a3412", label: "Weak" },
   failed: { bg: "#fee2e2", fg: "#991b1b", label: "Failed" },
 };
+const TIER_RANK: Record<PerformanceTier, number> = { gold_standard: 5, strong: 4, average: 3, weak: 2, failed: 1 };
 
-function cohortLine(d: TierDerivation): string {
-  if (d.metric === "manual") return "manual tier set by publisher";
-  const rank =
-    d.percentile >= 0.5
-      ? `top ${Math.max(Math.round((1 - d.percentile) * 100), 1)}%`
-      : `bottom ${Math.max(Math.round(d.percentile * 100), 1)}%`;
-  const where = d.pool.scope === "publication" ? `${d.pool.publication} promos` : "promos, all pubs";
-  return `${rank} by ${d.metric} · n=${d.pool.n} ${where} · ${d.scheme}`;
-}
+// Fixed leading columns, then dynamic stat columns discovered from the data.
+type SortKey = string; // "promo" | "code" | "publication" | "guru" | "copy" | "tier" | `stat:${string}`
 
 export default function PerformanceTab() {
   const [data, setData] = useState<ApiData | null>(null);
-  const [options, setOptions] = useState<{ gurus: string[]; products: string[] }>({ gurus: [], products: [] });
   const [busy, setBusy] = useState<string | null>(null);
   const [flash, setFlash] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [sortKey, setSortKey] = useState<SortKey | null>(null);
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const fileRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
@@ -89,14 +93,6 @@ export default function PerformanceTab() {
   useEffect(() => {
     void (async () => {
       await load();
-      try {
-        const o = await (await fetch("/api/promo-meta-options")).json();
-        setOptions({ gurus: o.gurus ?? [], products: o.products ?? [] });
-      } catch {
-        /* options are a nice-to-have — datalists just stay empty */
-      }
-      // Auto-pull: when the Google Sheet is configured, silently refresh the
-      // whole dataset on tab open so the numbers are always current.
       try {
         const first = await (await fetch("/api/performance")).json();
         if (first?.sheetConfigured) {
@@ -146,16 +142,6 @@ export default function PerformanceTab() {
     } finally { setBusy(null); }
   }, [load]);
 
-  const patch = useCallback(async (promoCode: string, body: Record<string, unknown>) => {
-    const res = await fetch("/api/performance", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ promoCode, ...body }),
-    });
-    if (!res.ok) fail((await res.json().catch(() => ({})) as { error?: string }).error ?? "Update failed");
-    await load();
-  }, [load]);
-
   const teach = useCallback(async (promoCode?: string) => {
     setBusy(promoCode ?? "teach-all");
     try {
@@ -173,8 +159,6 @@ export default function PerformanceTab() {
       const msg =
         `Brain taught: ${succeeded.length} promo(s), ${lessons} lesson(s) extracted` +
         (failed.length ? ` · ${failed.length} FAILED (still marked ready): ${failed.map((f) => f.promoCode).join(", ")}` : "") +
-        (json.skippedNoMatch ? ` · ${json.skippedNoMatch} skipped (no matched review)` : "") +
-        (json.skippedNoTier ? ` · ${json.skippedNoTier} skipped (insufficient comparables)` : "") +
         (json.brainLedger?.ok ? " · vault ledger updated" : " · vault ledger NOT updated");
       if (failed.length || !json.brainLedger?.ok) fail(msg); else say(msg);
       await load();
@@ -185,17 +169,75 @@ export default function PerformanceTab() {
     return <div className="max-w-5xl mx-auto mt-12 text-center text-sm text-gray-400">Loading performance data…</div>;
   }
 
-  const readyCount = data.views.filter((v) => v.match && v.derivation && !v.record.learnedAt).length;
-  const matchedCount = data.views.filter((v) => v.match).length;
-  const learnedCount = data.views.filter((v) => v.record.learnedAt).length;
+  // Only analyzed promos that have real-world results
+  const rows = data.views.filter((v) => v.match && Object.keys(v.record.stats).length > 0);
+  const readyCount = rows.filter((v) => v.derivation && !v.record.learnedAt).length;
+  const learnedCount = rows.filter((v) => v.record.learnedAt).length;
+
+  // Discover the stat columns present across matched rows, in first-seen order
+  const statCols: string[] = [];
+  for (const v of rows) for (const k of Object.keys(v.record.stats)) if (!statCols.includes(k)) statCols.push(k);
+  const conversionCol =
+    statCols.find((c) => c.toLowerCase() === "conversion rate") ??
+    statCols.find((c) => classifyStatColumn(c) === "percent" && c.toLowerCase().includes("conversion")) ??
+    statCols.find((c) => classifyStatColumn(c) === "percent") ??
+    null;
+
+  const effectiveSortKey: SortKey | null = sortKey ?? (conversionCol ? `stat:${conversionCol}` : "copy");
+
+  // Sortable value for a row under the active key
+  const sortVal = (v: View, key: SortKey): number | string | null => {
+    if (key === "promo") return v.match!.reviewName.toLowerCase();
+    if (key === "code") return v.record.promoCode.toLowerCase();
+    if (key === "publication") return (v.record.publication ?? "").toLowerCase();
+    if (key === "guru") return (v.record.guru ?? "").toLowerCase();
+    if (key === "copy") return v.match!.copyScore;
+    if (key === "tier") return v.derivation ? TIER_RANK[v.derivation.tier] : null;
+    if (key.startsWith("stat:")) {
+      const col = key.slice(5);
+      const raw = v.record.stats[col];
+      if (raw == null) return null;
+      const t = classifyStatColumn(col);
+      return t === "text" ? raw.toLowerCase() : normalizedStatNumber(raw, t) ?? toNumber(raw);
+    }
+    return null;
+  };
+
+  const sorted = [...rows].sort((a, b) => {
+    const va = sortVal(a, effectiveSortKey);
+    const vb = sortVal(b, effectiveSortKey);
+    if (va == null && vb == null) return 0;
+    if (va == null) return 1;      // nulls always last
+    if (vb == null) return -1;
+    let cmp: number;
+    if (typeof va === "number" && typeof vb === "number") cmp = va - vb;
+    else cmp = String(va).localeCompare(String(vb));
+    return sortDir === "asc" ? cmp : -cmp;
+  });
+
+  const clickSort = (key: SortKey) => {
+    if (effectiveSortKey === key) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    else { setSortKey(key); setSortDir(key === "promo" || key === "code" || key === "publication" || key === "guru" ? "asc" : "desc"); }
+  };
+  const arrow = (key: SortKey) => (effectiveSortKey === key ? (sortDir === "asc" ? " ▲" : " ▼") : "");
+
+  const th = (key: SortKey, label: string, extra = "") => (
+    <th
+      className={`px-3 py-2 font-semibold cursor-pointer select-none whitespace-nowrap hover:underline ${extra}`}
+      onClick={() => clickSort(key)}
+      title="Click to sort"
+    >
+      {label}{arrow(key)}
+    </th>
+  );
 
   return (
-    <div className="max-w-6xl mx-auto">
-      <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+    <div className="max-w-full mx-auto">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
         <div>
-          <h2 className="text-lg font-bold" style={{ color: NAVY }}>Real-World Performance</h2>
+          <h2 className="text-lg font-bold" style={{ color: NAVY }}>Analyzed Promos — Real-World Results</h2>
           <p className="text-xs text-gray-500 mt-0.5">
-            {data.views.length} creative codes · {matchedCount} matched to analyzed promos · {learnedCount} taught to the brain
+            {rows.length} analyzed promo{rows.length === 1 ? "" : "s"} with results · {learnedCount} taught to the brain
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -206,153 +248,97 @@ export default function PerformanceTab() {
             className="hidden"
             onChange={(e) => { const f = e.target.files?.[0]; if (f) void importCsv(f); e.target.value = ""; }}
           />
-          <button
-            onClick={() => fileRef.current?.click()}
-            disabled={busy !== null}
-            className="text-xs px-3 py-1.5 rounded border font-medium disabled:opacity-50"
-            style={{ borderColor: NAVY, color: NAVY }}
-          >
+          <button onClick={() => fileRef.current?.click()} disabled={busy !== null}
+            className="text-xs px-3 py-1.5 rounded border font-medium disabled:opacity-50" style={{ borderColor: NAVY, color: NAVY }}>
             {busy === "import" ? "Importing…" : "Import CSV"}
           </button>
-          <button
-            onClick={() => void syncSheet()}
-            disabled={busy !== null || !data.sheetConfigured}
+          <button onClick={() => void syncSheet()} disabled={busy !== null || !data.sheetConfigured}
             title={data.sheetConfigured ? "Pull all rows from the configured Google Sheet" : "Set GOOGLE_SERVICE_ACCOUNT_JSON + PERFORMANCE_SHEET_ID to enable"}
-            className="text-xs px-3 py-1.5 rounded border font-medium disabled:opacity-50"
-            style={{ borderColor: NAVY, color: NAVY }}
-          >
+            className="text-xs px-3 py-1.5 rounded border font-medium disabled:opacity-50" style={{ borderColor: NAVY, color: NAVY }}>
             {busy === "sync" ? "Syncing…" : "Sync Google Sheet"}
           </button>
-          <button
-            onClick={() => void teach()}
-            disabled={busy !== null || readyCount === 0}
-            className="text-xs px-3 py-1.5 rounded font-semibold text-white disabled:opacity-50"
-            style={{ background: NAVY }}
-          >
+          <button onClick={() => void teach()} disabled={busy !== null || readyCount === 0}
+            className="text-xs px-3 py-1.5 rounded font-semibold text-white disabled:opacity-50" style={{ background: NAVY }}>
             {busy === "teach-all" ? "Teaching…" : `Teach the Brain (${readyCount} ready)`}
           </button>
         </div>
       </div>
 
+      {/* Industry baseline context */}
+      {data.baseline && (
+        <div className="mb-3 text-xs rounded-lg border px-3 py-2 flex flex-wrap gap-x-6 gap-y-1" style={{ borderColor: "#dde4f0", background: "#f8fafc" }}>
+          <span className="font-semibold" style={{ color: NAVY }}>Industry baseline (conversion rate)</span>
+          <span className="text-gray-600">median <b>{data.baseline.median}%</b></span>
+          <span className="text-gray-600">top 10% <b>≥ {data.baseline.top10}%</b></span>
+          <span className="text-gray-600">top 1% <b>≥ {data.baseline.top1}%</b></span>
+          <span className="text-gray-400">across {data.baseline.n.toLocaleString()} industry promos (context only)</span>
+        </div>
+      )}
+
       {flash && <div className="mb-3 text-sm rounded border border-green-200 bg-green-50 text-green-800 px-3 py-2">{flash}</div>}
       {error && <div className="mb-3 text-sm rounded border border-red-200 bg-red-50 text-red-700 px-3 py-2">{error}</div>}
 
-      {data.views.length === 0 ? (
-        <div className="mt-16 text-center text-sm text-gray-400 max-w-md mx-auto">
-          <p className="font-medium text-gray-500 mb-2">No performance data yet.</p>
-          <p>Import a CSV export of your promo performance sheet (needs a “Creative Code” or “Promo Code” column), or configure the Google Sheet sync. Then attach the Agora publication to each code and link it to its analyzed promo — every matched pair teaches the brain what actually works.</p>
+      {rows.length === 0 ? (
+        <div className="mt-12 text-center text-sm text-gray-400 max-w-lg mx-auto">
+          <p className="font-medium text-gray-500 mb-2">No analyzed promos have real-world results yet.</p>
+          <p>Open any analyzed promo, set its <b>Creative Code</b> in Promo Details to match a code in your performance sheet, and it appears here with its full stats. The {data.baseline?.n.toLocaleString() ?? "industry"} sheet rows are loaded as baseline context.</p>
         </div>
       ) : (
         <div className="overflow-x-auto rounded-lg border" style={{ borderColor: "#dde4f0" }}>
-          <table className="w-full text-sm bg-white">
+          <table className="text-sm bg-white whitespace-nowrap">
             <thead>
               <tr className="text-left text-xs uppercase tracking-wide" style={{ background: "#f0f4fc", color: NAVY }}>
-                <th className="px-3 py-2 font-semibold">Creative Code</th>
-                <th className="px-3 py-2 font-semibold">Publication</th>
-                <th className="px-3 py-2 font-semibold">Guru</th>
-                <th className="px-3 py-2 font-semibold">Result</th>
-                <th className="px-3 py-2 font-semibold">Tier</th>
-                <th className="px-3 py-2 font-semibold">Analyzed Promo</th>
+                {th("promo", "Promo")}
+                {th("code", "Creative Code")}
+                {th("publication", "Publication")}
+                {th("guru", "Guru")}
+                {th("copy", "Copy Score")}
+                {th("tier", "Tier")}
+                {statCols.map((c) => th(`stat:${c}`, c, "text-right"))}
                 <th className="px-3 py-2 font-semibold">Brain</th>
               </tr>
             </thead>
             <tbody>
-              {data.views.map(({ record, derivation, match }) => (
-                <tr key={record.promoCode} className="border-t align-top" style={{ borderColor: "#eef1f8" }}>
-                  <td className="px-3 py-2 font-mono text-xs whitespace-nowrap" title={Object.entries(record.stats).map(([k, v]) => `${k}: ${v}`).join("\n")}>
-                    {record.promoCode}
+              {sorted.map(({ record, derivation, match }) => (
+                <tr key={record.promoCode} className="border-t" style={{ borderColor: "#eef1f8" }}>
+                  <td className="px-3 py-2 min-w-[12rem]">
+                    <a href={`/?review=${match!.reviewId}`} className="underline" style={{ color: NAVY }}>{match!.reviewName}</a>
                   </td>
-                  <td className="px-3 py-2 min-w-[11rem]">
-                    <input
-                      list="perf-pub-options"
-                      defaultValue={record.publication ?? ""}
-                      placeholder="Attach publication…"
-                      onBlur={(e) => { const v = e.target.value.trim(); if (v !== (record.publication ?? "")) void patch(record.promoCode, { publication: v || null }); }}
-                      className="w-full text-xs rounded border border-gray-200 px-2 py-1"
-                    />
-                  </td>
-                  <td className="px-3 py-2 min-w-[9rem]">
-                    <input
-                      list="perf-guru-options"
-                      defaultValue={record.guru ?? ""}
-                      placeholder="Guru…"
-                      onBlur={(e) => { const v = e.target.value.trim(); if (v !== (record.guru ?? "")) void patch(record.promoCode, { guru: v || null }); }}
-                      className="w-full text-xs rounded border border-gray-200 px-2 py-1"
-                    />
-                  </td>
-                  <td className="px-3 py-2 text-xs whitespace-nowrap">
-                    {derivation && derivation.metric !== "manual" ? (
-                      <span>{derivation.metric}: <b>{formatStatValue(record.stats[derivation.metric], classifyStatColumn(derivation.metric))}</b></span>
-                    ) : (
-                      <span className="text-gray-400">{Object.keys(record.stats).length} stat cols</span>
-                    )}
-                  </td>
+                  <td className="px-3 py-2 font-mono text-xs">{record.promoCode}</td>
+                  <td className="px-3 py-2">{record.publication ?? <span className="text-gray-300">—</span>}</td>
+                  <td className="px-3 py-2">{record.guru ?? <span className="text-gray-300">—</span>}</td>
+                  <td className="px-3 py-2 text-right">{match!.copyScore != null ? match!.copyScore.toFixed(1) : <span className="text-gray-300">—</span>}</td>
                   <td className="px-3 py-2">
                     {derivation ? (
-                      <div>
-                        <span
-                          className="inline-block text-xs font-semibold rounded-full px-2 py-0.5"
-                          style={{ background: TIER_STYLE[derivation.tier].bg, color: TIER_STYLE[derivation.tier].fg }}
-                        >
-                          {TIER_STYLE[derivation.tier].label}
-                        </span>
-                        <div className="text-[10px] text-gray-400 mt-0.5">{cohortLine(derivation)}</div>
-                      </div>
-                    ) : (
-                      <span className="text-[11px] text-gray-400" title="Needs at least 8 records sharing the same metric (same publication for revenue metrics) before a tier claim is honest.">
-                        insufficient comparables
+                      <span className="inline-block text-xs font-semibold rounded-full px-2 py-0.5"
+                        style={{ background: TIER_STYLE[derivation.tier].bg, color: TIER_STYLE[derivation.tier].fg }}
+                        title={cohortLine(derivation)}>
+                        {TIER_STYLE[derivation.tier].label}
                       </span>
-                    )}
+                    ) : <span className="text-[11px] text-gray-400" title="Needs ≥8 same-metric peers before a tier claim is honest.">—</span>}
                   </td>
-                  <td className="px-3 py-2 min-w-[12rem]">
-                    {match ? (
-                      <span className="inline-flex items-center gap-1">
-                        <a href={`/?review=${match.reviewId}`} className="text-xs underline" style={{ color: NAVY }}>
-                          {match.reviewName}
-                        </a>
-                        <button
-                          onClick={() => void patch(record.promoCode, { unlinkReviewId: match.reviewId })}
-                          className="text-gray-300 hover:text-red-500 text-xs leading-none"
-                          title="Unlink this promo from the creative code"
-                        >
-                          ×
-                        </button>
-                      </span>
-                    ) : (
-                      <select
-                        defaultValue=""
-                        onChange={(e) => { if (e.target.value) void patch(record.promoCode, { linkReviewId: e.target.value }); }}
-                        className="w-full text-xs rounded border border-gray-200 px-1.5 py-1 text-gray-500"
-                      >
-                        <option value="">Link analyzed promo…</option>
-                        {data.unmatchedReviews.map((r) => (
-                          <option key={r.id} value={r.id}>{r.name}</option>
-                        ))}
-                      </select>
-                    )}
-                  </td>
-                  <td className="px-3 py-2 whitespace-nowrap">
+                  {statCols.map((c) => {
+                    const raw = record.stats[c];
+                    const isConv = c === conversionCol;
+                    return (
+                      <td key={c} className={`px-3 py-2 text-right ${isConv ? "font-semibold" : ""}`} style={isConv ? { color: NAVY } : undefined}>
+                        {raw != null ? formatStatValue(raw, classifyStatColumn(c)) : <span className="text-gray-300">—</span>}
+                      </td>
+                    );
+                  })}
+                  <td className="px-3 py-2">
                     {record.learnedAt ? (
-                      <button
-                        onClick={() => void teach(record.promoCode)}
-                        disabled={busy !== null}
+                      <button onClick={() => void teach(record.promoCode)} disabled={busy !== null}
                         className="text-xs text-green-700 underline decoration-dotted disabled:opacity-50"
-                        title={`Taught ${record.learnedAt.slice(0, 10)} — click to re-teach with current stats`}
-                      >
+                        title={`Taught ${record.learnedAt.slice(0, 10)} — click to re-teach with current stats`}>
                         {busy === record.promoCode ? "…" : "✓ taught"}
                       </button>
-                    ) : match && derivation ? (
-                      <button
-                        onClick={() => void teach(record.promoCode)}
-                        disabled={busy !== null}
-                        className="text-xs px-2 py-1 rounded text-white disabled:opacity-50"
-                        style={{ background: NAVY }}
-                      >
+                    ) : derivation ? (
+                      <button onClick={() => void teach(record.promoCode)} disabled={busy !== null}
+                        className="text-xs px-2 py-1 rounded text-white disabled:opacity-50" style={{ background: NAVY }}>
                         {busy === record.promoCode ? "…" : "Teach"}
                       </button>
-                    ) : (
-                      <span className="text-[11px] text-gray-300">—</span>
-                    )}
+                    ) : <span className="text-[11px] text-gray-300">—</span>}
                   </td>
                 </tr>
               ))}
@@ -361,16 +347,18 @@ export default function PerformanceTab() {
         </div>
       )}
 
-      <datalist id="perf-pub-options">
-        {options.products.map((p) => <option key={p} value={p} />)}
-      </datalist>
-      <datalist id="perf-guru-options">
-        {options.gurus.map((g) => <option key={g} value={g} />)}
-      </datalist>
-
       <p className="text-[11px] text-gray-400 mt-3">
-        Tiers are relative and recomputed as data arrives (as of {data.asOf.slice(0, 10)}). Revenue metrics rank only within a publication; rate metrics (conversion, EPC) may rank globally. Teaching the brain merges the real result into the promo&apos;s training data, extracts copy lessons, and appends to the vault&apos;s Performance Ledger.
+        Sortable — click any column header (default: conversion rate, high to low). Tiers rank each promo against the full industry dataset and are recomputed as data arrives (as of {data.asOf.slice(0, 10)}). Teaching the brain merges the real result into the promo&apos;s training data, extracts copy lessons, and appends to the vault&apos;s Performance Ledger.
       </p>
     </div>
   );
+}
+
+function cohortLine(d: TierDerivation): string {
+  if (d.metric === "manual") return "manual tier set by publisher";
+  const rank = d.percentile >= 0.5
+    ? `top ${Math.max(Math.round((1 - d.percentile) * 100), 1)}%`
+    : `bottom ${Math.max(Math.round(d.percentile * 100), 1)}%`;
+  const where = d.pool.scope === "publication" ? `${d.pool.publication} promos` : "promos, all pubs";
+  return `${rank} by ${d.metric} · n=${d.pool.n} ${where} · ${d.scheme}`;
 }

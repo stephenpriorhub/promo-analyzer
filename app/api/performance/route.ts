@@ -20,13 +20,39 @@ import {
 import { deriveTiers, type TierDerivation } from "@/lib/performance-tier";
 import { fetchAllSheetStats, getSheetLoadError, getSheetLoadStats, isPromoStatsConfigured, normalizeCode } from "@/lib/promo-stats";
 import { getAllReviews, updateReviewPromoCode } from "@/lib/reviews-store";
+import { classifyStatColumn, normalizedStatNumber } from "@/lib/stat-format";
 
 export const runtime = "nodejs";
 
 export interface PerformanceView {
   record: ReturnType<typeof getAllPerformanceRecords>[number];
   derivation: TierDerivation | null;
-  match: { reviewId: string; reviewName: string; hasTraining: boolean } | null;
+  match: { reviewId: string; reviewName: string; hasTraining: boolean; copyScore: number | null } | null;
+}
+
+/**
+ * Baseline context from the full industry dataset — what conversion rates are
+ * actually achievable. Percentiles over every record's conversion column.
+ */
+function conversionBaseline(records: ReturnType<typeof getAllPerformanceRecords>) {
+  const vals: number[] = [];
+  for (const r of records) {
+    const col = Object.keys(r.stats).find(
+      (h) => classifyStatColumn(h) === "percent" && h.toLowerCase().includes("conversion")
+    );
+    if (!col) continue;
+    const n = normalizedStatNumber(r.stats[col], "percent");
+    if (n != null && n >= 0 && n <= 100) vals.push(n);
+  }
+  if (vals.length === 0) return null;
+  vals.sort((a, b) => a - b);
+  const pct = (p: number) => vals[Math.min(vals.length - 1, Math.floor(p * vals.length))];
+  return {
+    n: vals.length,
+    median: Math.round(pct(0.5) * 100) / 100,
+    top10: Math.round(pct(0.9) * 100) / 100,
+    top1: Math.round(pct(0.99) * 100) / 100,
+  };
 }
 
 function buildViews(): { views: PerformanceView[]; unmatchedReviews: Array<{ id: string; name: string; promoCode: string | null }> } {
@@ -46,6 +72,7 @@ function buildViews(): { views: PerformanceView[]; unmatchedReviews: Array<{ id:
             reviewId: review.id,
             reviewName: review.displayName ?? review.filename.replace(/\.[^.]+$/, ""),
             hasTraining: review.training != null,
+            copyScore: review.effectivenessScore,
           }
         : null,
     };
@@ -66,6 +93,7 @@ export async function GET() {
   return NextResponse.json({
     views,
     unmatchedReviews,
+    baseline: conversionBaseline(getAllPerformanceRecords()),
     sheetConfigured: isPromoStatsConfigured(),
     asOf: new Date().toISOString(),
   });
