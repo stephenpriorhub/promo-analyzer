@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { classifyStatColumn, formatStatValue } from "@/lib/stat-format";
-import { PROMO_TYPES, type PromoType } from "@/lib/promo-types";
+import { PROMO_TYPES, PROMO_STATUSES, type PromoType, type PromoStatus } from "@/lib/promo-types";
 
 const NAVY = "#012479";
 const NAVY_BG = "#f0f4fc";
@@ -16,6 +16,7 @@ interface Props {
   initialProduct?: string | null;
   initialPromoType?: PromoType | null;
   initialPricePoint?: number | null;
+  initialPromoStatus?: PromoStatus | null;
   onUpdated?: () => void;
   /** Fires when the creative code is committed, so parents can react live. */
   onPromoCodeChange?: (code: string | null) => void;
@@ -90,11 +91,13 @@ export default function PromoMetadata({
   initialProduct,
   initialPromoType,
   initialPricePoint,
+  initialPromoStatus,
   onUpdated,
   onPromoCodeChange,
 }: Props) {
   const [promoCode, setPromoCode] = useState(initialPromoCode ?? "");
   const [promoType, setPromoType] = useState<string>(initialPromoType ?? "");
+  const [promoStatus, setPromoStatus] = useState<string>(initialPromoStatus ?? "");
   const [publisher, setPublisher] = useState(initialPublisher ?? "");
   const [gurus, setGurus] = useState<string[]>(initialGurus ?? []);
   const [product, setProduct] = useState(initialProduct ?? "");
@@ -111,8 +114,9 @@ export default function PromoMetadata({
     setGurus(initialGurus ?? []);
     setProduct(initialProduct ?? "");
     setPromoType(initialPromoType ?? "");
+    setPromoStatus(initialPromoStatus ?? "");
     setGuruDraft("");
-  }, [reviewId, initialPromoCode, initialPublisher, initialProduct, initialPromoType]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [reviewId, initialPromoCode, initialPublisher, initialProduct, initialPromoType, initialPromoStatus]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     fetch("/api/promo-meta-options")
@@ -195,6 +199,20 @@ export default function PromoMetadata({
             className="w-full text-sm rounded-md border border-gray-300 px-2.5 py-1.5 focus:outline-none focus:ring-2"
             style={{ ["--tw-ring-color" as string]: NAVY_BORDER }}
           />
+        </div>
+
+        {/* Promo Status */}
+        <div className="flex flex-col gap-1">
+          <label className="text-xs font-semibold text-gray-600">Promo Status</label>
+          <select
+            value={promoStatus}
+            onChange={(e) => { setPromoStatus(e.target.value); save({ promoStatus: e.target.value || null }); }}
+            className="w-full text-sm rounded-md border border-gray-300 px-2 py-1.5 bg-white focus:outline-none focus:ring-2"
+            style={{ ["--tw-ring-color" as string]: NAVY_BORDER }}
+          >
+            <option value="">Not set</option>
+            {PROMO_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+          </select>
         </div>
 
         {/* Publisher */}

@@ -17,8 +17,8 @@ export interface SupplementalFile {
   uploadedAt: string;
 }
 
-import type { PromoType } from "./promo-types";
-export { PROMO_TYPES, type PromoType } from "./promo-types";
+import type { PromoType, PromoStatus } from "./promo-types";
+export { PROMO_TYPES, PROMO_STATUSES, type PromoType, type PromoStatus } from "./promo-types";
 import type { SubScore } from "./score";
 import { deriveScore } from "./score";
 import { ANALYSIS_MODEL } from "./models";
@@ -53,6 +53,8 @@ export interface SavedReview {
   promoCode?: string | null; // join key to the external performance sheet (optional; only some promos have one)
   promoType?: PromoType | null;     // canonical type — price-derived unless set manually
   promoTypeSource?: "price" | "manual" | "proxy"; // manual wins; "proxy" = inferred from the matched record's cart value when no price
+  promoStatus?: PromoStatus | null; // Active / Old (Inactive) / Draft (Untested)
+  hasPerformanceData?: boolean;     // TRANSIENT — computed in GET (creative code matches a performance record); never persisted
   pricePoint?: number | null;       // headline price parsed from the offer (drives the type rule)
   publisher?: string | null; // editable; auto-seeded from detection, user-correctable
   gurus?: string[];          // editable; editors/strategists only (hosts excluded)
@@ -681,6 +683,15 @@ export function updateReviewGurus(id: string, gurus: string[]): boolean {
   const idx = reviews.findIndex((r) => r.id === id);
   if (idx === -1) return false;
   reviews[idx].gurus = Array.from(new Set((gurus ?? []).map((g) => g.trim()).filter(Boolean)));
+  writeReviews(reviews);
+  return true;
+}
+
+export function updateReviewPromoStatus(id: string, promoStatus: PromoStatus | null): boolean {
+  const reviews = readReviews();
+  const idx = reviews.findIndex((r) => r.id === id);
+  if (idx === -1) return false;
+  reviews[idx].promoStatus = promoStatus;
   writeReviews(reviews);
   return true;
 }

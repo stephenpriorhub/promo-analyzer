@@ -207,7 +207,18 @@ export default function PastReviews({
                     className="w-full text-sm font-medium text-gray-700 border-b border-blue-400 bg-transparent outline-none px-0 py-0"
                   />
                 ) : (
-                  <p className="text-sm font-medium text-gray-700 truncate">{name}</p>
+                  <p className="text-sm font-medium text-gray-700 truncate flex items-center gap-1">
+                    {review.hasPerformanceData && (
+                      <span
+                        className="shrink-0 text-green-600"
+                        title="Connected To Performance Data"
+                        aria-label="Connected To Performance Data"
+                      >
+                        ✓
+                      </span>
+                    )}
+                    <span className="truncate">{name}</span>
+                  </p>
                 )}
                 <p className="text-xs text-gray-400">{date}</p>
               </div>

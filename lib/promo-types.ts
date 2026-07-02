@@ -10,3 +10,11 @@ export const PROMO_TYPES = [
 ] as const;
 
 export type PromoType = (typeof PROMO_TYPES)[number];
+
+export const PROMO_STATUSES = [
+  "Active",
+  "Old (Inactive)",
+  "Draft (Untested)",
+] as const;
+
+export type PromoStatus = (typeof PROMO_STATUSES)[number];

@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import type { AnalysisSections, TrainingData, InputType } from "@/lib/reviews-store";
-import type { PromoType } from "@/lib/promo-types";
+import type { PromoType, PromoStatus } from "@/lib/promo-types";
 import type { SubScore } from "@/lib/score";
 import type { FKScore } from "@/lib/fk-score";
 import ScoreBadges from "./ScoreBadges";
@@ -40,6 +40,7 @@ interface Props {
   initialProduct?: string | null;
   initialPromoType?: PromoType | null;
   initialPricePoint?: number | null;
+  initialPromoStatus?: PromoStatus | null;
   onScoreApplied?: () => void;
   onRename?: (newName: string) => void;
   onReanalyzed?: (sections: AnalysisSections, fkScore: FKScore | null) => void;
@@ -135,6 +136,7 @@ export default function AnalysisResults({
   initialProduct,
   initialPromoType,
   initialPricePoint,
+  initialPromoStatus,
   onScoreApplied,
   onRename,
   onReanalyzed,
@@ -417,6 +419,7 @@ export default function AnalysisResults({
                 initialProduct={initialProduct}
                 initialPromoType={initialPromoType}
                 initialPricePoint={initialPricePoint}
+                initialPromoStatus={initialPromoStatus}
                 onUpdated={onScoreApplied}
                 onPromoCodeChange={setLivePromoCode}
               />

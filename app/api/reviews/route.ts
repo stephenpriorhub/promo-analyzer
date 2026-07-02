@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAllReviews, deleteReview, renameReview, updateReviewTraining, updateReviewRunDate, updateReviewPromoCode, updateReviewPublisher, updateReviewGurus, updateReviewProduct, updateReviewPromoType, getReviewById, getCalibrationStats, PROMO_TYPES, type PromoType } from "@/lib/reviews-store";
+import { getAllReviews, deleteReview, renameReview, updateReviewTraining, updateReviewRunDate, updateReviewPromoCode, updateReviewPublisher, updateReviewGurus, updateReviewProduct, updateReviewPromoType, updateReviewPromoStatus, getReviewById, getCalibrationStats, PROMO_TYPES, PROMO_STATUSES, type PromoType, type PromoStatus } from "@/lib/reviews-store";
 import { detectGuru, detectPublisher } from "@/lib/brain-reader";
 import { extractAndStoreLessons } from "@/lib/extract-lessons";
+import { getAllPerformanceRecords } from "@/lib/performance-db";
+import { normalizeCode } from "@/lib/promo-stats";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -12,7 +14,13 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(getCalibrationStats());
   }
   const reviews = getAllReviews();
-  return NextResponse.json(reviews);
+  // Flag reviews whose creative code matches a performance record (has data).
+  const dataCodes = new Set(getAllPerformanceRecords().map((r) => normalizeCode(r.promoCode)));
+  const withFlags = reviews.map((r) => ({
+    ...r,
+    hasPerformanceData: !!r.promoCode && dataCodes.has(normalizeCode(r.promoCode)),
+  }));
+  return NextResponse.json(withFlags);
 }
 
 export async function DELETE(req: NextRequest) {
@@ -30,7 +38,7 @@ export async function DELETE(req: NextRequest) {
 
 export async function PATCH(req: NextRequest) {
   const body = await req.json();
-  const { id, displayName, training, effectiveness, promoRunStartDate, promoCode, publisher, gurus, product, promoType } = body;
+  const { id, displayName, training, effectiveness, promoRunStartDate, promoCode, publisher, gurus, product, promoType, promoStatus } = body;
 
   if (!id) {
     return NextResponse.json({ error: "id required" }, { status: 400 });
@@ -71,6 +79,14 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: "Invalid promoType" }, { status: 400 });
     }
     const ok = updateReviewPromoType(id, (promoType || null) as PromoType | null);
+    if (!ok) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
+  if (promoStatus !== undefined) {
+    if (promoStatus !== null && !(PROMO_STATUSES as readonly string[]).includes(promoStatus)) {
+      return NextResponse.json({ error: "Invalid promoStatus" }, { status: 400 });
+    }
+    const ok = updateReviewPromoStatus(id, (promoStatus || null) as PromoStatus | null);
     if (!ok) return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
