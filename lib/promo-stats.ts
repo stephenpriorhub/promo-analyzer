@@ -121,6 +121,22 @@ let lastLoadError: string | null = null;
 export function getSheetLoadError(): string | null {
   return lastLoadError;
 }
+
+/**
+ * Row accounting from the last successful load, so a lower loaded-count than
+ * the sheet's row count is explainable instead of mysterious.
+ */
+export interface SheetLoadStats {
+  dataRows: number;      // rows below the header
+  blankCode: number;     // rows skipped — empty creative-code cell
+  duplicateCode: number; // rows collapsed onto an earlier identical code
+  loaded: number;        // distinct records kept
+  duplicateExamples: string[];
+}
+let lastLoadStats: SheetLoadStats | null = null;
+export function getSheetLoadStats(): SheetLoadStats | null {
+  return lastLoadStats;
+}
 /** Failed/empty loads only cache briefly so a fixed setup shows up fast. */
 const EMPTY_TTL_MS = 30_000;
 
@@ -204,19 +220,29 @@ async function loadMap(): Promise<Map<string, PromoStats>> {
       return empty;
     }
 
+    const dataRows = rows.slice(1);
+    let blankCode = 0;
+    let duplicateCode = 0;
+    const duplicateExamples: string[] = [];
     const map = new Map<string, PromoStats>();
-    for (const row of rows.slice(1)) {
+    for (const row of dataRows) {
       const rawCode = (row[codeIdx] ?? "").toString();
-      if (!rawCode.trim()) continue;
+      if (!rawCode.trim()) { blankCode++; continue; }
+      const key = normalizeCode(rawCode);
+      if (map.has(key)) {
+        duplicateCode++;
+        if (duplicateExamples.length < 5) duplicateExamples.push(rawCode.trim());
+      }
       const stats: Record<string, string> = {};
       headers.forEach((h, i) => {
         if (i === codeIdx) return;
         const val = (row[i] ?? "").toString().trim();
         if (h.trim() && val) stats[h.trim()] = val;
       });
-      map.set(normalizeCode(rawCode), { promoCode: rawCode.trim(), stats });
+      map.set(key, { promoCode: rawCode.trim(), stats });
     }
     lastLoadError = null;
+    lastLoadStats = { dataRows: dataRows.length, blankCode, duplicateCode, loaded: map.size, duplicateExamples };
     mapCache = { at: now, map };
     return map;
   } catch (e) {

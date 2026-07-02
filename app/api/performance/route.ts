@@ -18,7 +18,7 @@ import {
   type PerformanceEnrichment,
 } from "@/lib/performance-db";
 import { deriveTiers, type TierDerivation } from "@/lib/performance-tier";
-import { fetchAllSheetStats, getSheetLoadError, isPromoStatsConfigured, normalizeCode } from "@/lib/promo-stats";
+import { fetchAllSheetStats, getSheetLoadError, getSheetLoadStats, isPromoStatsConfigured, normalizeCode } from "@/lib/promo-stats";
 import { getAllReviews, updateReviewPromoCode } from "@/lib/reviews-store";
 
 export const runtime = "nodejs";
@@ -96,7 +96,7 @@ export async function POST(req: NextRequest) {
       );
     }
     const result = upsertPerformanceRecords(all, "sheet");
-    return NextResponse.json({ ok: true, ...result, imported: all.length });
+    return NextResponse.json({ ok: true, ...result, imported: all.length, sheet: getSheetLoadStats() });
   }
 
   return NextResponse.json({ error: "Provide { csv } or { sync: true }" }, { status: 400 });
