@@ -362,6 +362,8 @@ export interface CanonicalEntities {
   gurus: string[];
   publishers: string[];
   products: string[];
+  /** Canonical-guru (lowercase) → Parent Company. Offline fallback for resolvePublisherForGurus. */
+  guruPublisher?: Record<string, string>;
 }
 
 let _canonCache: { at: number; data: CanonicalEntities } | null = null;
@@ -452,16 +454,17 @@ export async function findCanonicalGurusInText(text: string): Promise<string[]> 
  */
 export async function resolvePublisherForGurus(gurus: string[]): Promise<string | null> {
   if (gurus.length === 0) return null;
-  const rows = parseDirectory(await loadPublishingDirectory());
-  if (rows.length === 0) return null;
-  // Build canonical-guru → parent (first non-junk parent wins per guru).
+  // Canonical-guru(lowercase) → parent. Seed from the bundled snapshot so this
+  // works even when the live directory fetch fails on the server; live rows
+  // override on top.
   const byGuru = new Map<string, string>();
-  for (const r of rows) {
+  const snap = (canonicalSnapshot as CanonicalEntities).guruPublisher ?? {};
+  for (const [g, p] of Object.entries(snap)) if (p) byGuru.set(g.toLowerCase(), p);
+  for (const r of parseDirectory(await loadPublishingDirectory())) {
     const parent = stripProductCode(r.parent);
     if (!parent || parent.startsWith("(")) continue;
     for (const g of r.guru.split(/\s+[+&]\s+/).map((x) => canonicalGuruName(x.trim()))) {
-      const key = g.toLowerCase();
-      if (g && !byGuru.has(key)) byGuru.set(key, parent);
+      if (g) byGuru.set(g.toLowerCase(), parent); // live wins
     }
   }
   for (const g of gurus) {
