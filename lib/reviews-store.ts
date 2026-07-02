@@ -421,6 +421,7 @@ export async function backfillMetadataCanonical(): Promise<{ updated: number; to
   const br = require("./brain-reader") as {
     findCanonicalGurusInText: (text: string) => Promise<string[]>;
     resolvePublisherForGurus: (gurus: string[]) => Promise<string | null>;
+    resolvePublisherForProduct: (product: string | null | undefined) => Promise<string | null>;
   };
 
   const reviews = readReviews();
@@ -444,12 +445,15 @@ export async function backfillMetadataCanonical(): Promise<{ updated: number; to
       changed = true;
     }
 
-    // AUTHORITATIVE: set the publisher from the matched guru's Parent Company in
-    // the directory — this corrects wrong attributions (e.g. an Oxford Club guru
-    // mislabeled Monument Traders Alliance). Only override when the directory
-    // actually knows the guru's publisher; never guess a default.
+    // AUTHORITATIVE publisher, in priority order:
+    //  1) the PRODUCT/publication (identifies the publisher unambiguously — a
+    //     guru can merely be *mentioned* in someone else's copy), then
+    //  2) the matched guru's Parent Company.
+    // Both read the directory ∪ snapshot; never guess a default.
     const gurusForPublisher = (r.gurus ?? []).filter((g) => !NON_GURU_HOSTS.has(g));
-    const directoryPublisher = await br.resolvePublisherForGurus(gurusForPublisher);
+    const directoryPublisher =
+      (await br.resolvePublisherForProduct(r.product ?? parseProductFromOffer(r.sections.offer ?? ""))) ??
+      (await br.resolvePublisherForGurus(gurusForPublisher));
     if (directoryPublisher && r.publisher !== directoryPublisher) {
       r.publisher = directoryPublisher;
       changed = true;
