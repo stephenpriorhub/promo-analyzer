@@ -415,21 +415,23 @@ export function backfillMetadata(): { updated: number; total: number } {
  * confident directory match exists; otherwise keeps the existing value and, if
  * blank, falls back to detection/offer-parse. Never clears a value to empty.
  */
-export async function backfillMetadataCanonical(): Promise<{ updated: number; total: number; matched: number }> {
+export async function backfillMetadataCanonical(): Promise<{ updated: number; total: number; matched: number; publisherFixed: number }> {
   // Lazy import to avoid load-time cycles.
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const br = require("./brain-reader") as {
     findCanonicalGurusInText: (text: string) => Promise<string[]>;
+    resolvePublisherForGurus: (gurus: string[]) => Promise<string | null>;
   };
 
   const reviews = readReviews();
   let updated = 0;
   let matched = 0;
+  let publisherFixed = 0;
   for (const r of reviews) {
     const text = `${r.sections.offer ?? ""}\n${r.sections.effectiveness ?? ""}`;
     let changed = false;
 
-    // Match canonical gurus by name in the copy (uses live ∪ snapshot list).
+    // Match canonical gurus by name in the copy (alias-aware; live ∪ snapshot).
     const gurus = (await br.findCanonicalGurusInText(text)).filter((g) => !NON_GURU_HOSTS.has(g));
     if (gurus.length) {
       matched++;
@@ -442,6 +444,18 @@ export async function backfillMetadataCanonical(): Promise<{ updated: number; to
       changed = true;
     }
 
+    // AUTHORITATIVE: set the publisher from the matched guru's Parent Company in
+    // the directory — this corrects wrong attributions (e.g. an Oxford Club guru
+    // mislabeled Monument Traders Alliance). Only override when the directory
+    // actually knows the guru's publisher; never guess a default.
+    const gurusForPublisher = (r.gurus ?? []).filter((g) => !NON_GURU_HOSTS.has(g));
+    const directoryPublisher = await br.resolvePublisherForGurus(gurusForPublisher);
+    if (directoryPublisher && r.publisher !== directoryPublisher) {
+      r.publisher = directoryPublisher;
+      changed = true;
+      publisherFixed++;
+    }
+
     // Fill any remaining blanks from detection / offer parse
     const seed = seedMetadata(r);
     if ((r.publisher == null || r.publisher === "") && seed.publisher) { r.publisher = seed.publisher; changed = true; }
@@ -451,7 +465,7 @@ export async function backfillMetadataCanonical(): Promise<{ updated: number; to
     if (changed) updated++;
   }
   if (updated) writeReviews(reviews);
-  return { updated, total: reviews.length, matched };
+  return { updated, total: reviews.length, matched, publisherFixed };
 }
 
 export function saveReview(

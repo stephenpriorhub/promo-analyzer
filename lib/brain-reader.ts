@@ -33,11 +33,14 @@ const GURU_MAP: Record<string, string> = {
   "Chris Johnson": "Chris Johnson.md",
 };
 
-// Maps known publisher names to readable labels
+// Maps known publisher keywords to canonical labels. These are DISTINCT Agora
+// family members — never conflate them (Oxford Club ≠ Oxford Group ≠ MTA).
+// Guru→publisher from the Financial Publishing Directory is authoritative and
+// overrides these keyword guesses (see resolvePublisherForGurus).
 const PUBLISHER_KEYWORDS: Record<string, string> = {
-  "Monument Traders Alliance": "Monument Traders Alliance (MTA / Oxford Group / Agora)",
-  "MTA": "Monument Traders Alliance (MTA / Oxford Group / Agora)",
-  "Oxford Group": "Monument Traders Alliance (MTA / Oxford Group / Agora)",
+  "Monument Traders Alliance": "Monument Traders Alliance",
+  "The Oxford Club": "The Oxford Club",
+  "Oxford Club": "The Oxford Club",
   "Paradigm Press": "Paradigm Press",
   "Stansberry": "Stansberry Research",
   "Legacy Research": "Legacy Research",
@@ -411,18 +414,61 @@ export async function getCanonicalEntities(): Promise<CanonicalEntities> {
 }
 
 /**
+ * Guru name aliases → canonical name. Same person, different spellings in copy.
+ * Keep this the single place aliases are resolved.
+ */
+const GURU_ALIASES: Record<string, string> = {
+  "alex green": "Alexander Green",
+};
+
+/** Resolve a guru name to its canonical form (alias-aware). */
+export function canonicalGuruName(name: string): string {
+  return GURU_ALIASES[name.toLowerCase().replace(/\s+/g, " ").trim()] ?? name;
+}
+
+/**
  * Find canonical gurus whose name appears in the given text (case-insensitive,
  * whitespace-normalized). Uses the full canonical list (live ∪ snapshot), so it
- * works even when the live directory fetch is down. Hosts are already excluded.
+ * works even when the live directory fetch is down. Aliases are collapsed to the
+ * canonical name (Alex Green → Alexander Green) and de-duped. Hosts excluded.
  */
 export async function findCanonicalGurusInText(text: string): Promise<string[]> {
   const { gurus } = await getCanonicalEntities();
   const norm = (s: string) => s.toLowerCase().replace(/\s+/g, " ").trim();
   const hay = norm(text);
-  return gurus.filter((g) => {
+  const hits = gurus.filter((g) => {
     const n = norm(g);
     return n.length >= 5 && hay.includes(n);
   });
+  return Array.from(new Set(hits.map(canonicalGuruName)));
+}
+
+/**
+ * Authoritative publisher for a set of gurus, from the Financial Publishing
+ * Directory's Parent Company column (alias-aware). Returns the cleaned parent
+ * of the first guru with a directory entry, or null if none is known — the
+ * caller must NOT fall back to a default like MTA. This is what makes publisher
+ * follow real product knowledge (e.g. Alexander Green → The Oxford Club).
+ */
+export async function resolvePublisherForGurus(gurus: string[]): Promise<string | null> {
+  if (gurus.length === 0) return null;
+  const rows = parseDirectory(await loadPublishingDirectory());
+  if (rows.length === 0) return null;
+  // Build canonical-guru → parent (first non-junk parent wins per guru).
+  const byGuru = new Map<string, string>();
+  for (const r of rows) {
+    const parent = stripProductCode(r.parent);
+    if (!parent || parent.startsWith("(")) continue;
+    for (const g of r.guru.split(/\s+[+&]\s+/).map((x) => canonicalGuruName(x.trim()))) {
+      const key = g.toLowerCase();
+      if (g && !byGuru.has(key)) byGuru.set(key, parent);
+    }
+  }
+  for (const g of gurus) {
+    const hit = byGuru.get(canonicalGuruName(g).toLowerCase());
+    if (hit) return hit;
+  }
+  return null;
 }
 
 /** Strip Obsidian-specific markup that's not useful in a prompt */
