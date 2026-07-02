@@ -12,7 +12,6 @@ import EvaldoSection from "./EvaldoSection";
 import CUBViewer from "./CUBViewer";
 import OfferSection from "./OfferSection";
 import PromoMetadata from "./PromoMetadata";
-import BrainModal from "./BrainModal";
 import TrainingTab from "./TrainingTab";
 import DocumentsTab from "./DocumentsTab";
 import RealResults from "./RealResults";
@@ -142,7 +141,6 @@ export default function AnalysisResults({
 }: Props) {
   const [activeTab, setActiveTab] = useState<TabKey>("offer");
   const [exporting, setExporting] = useState(false);
-  const [brainOpen, setBrainOpen] = useState(false);
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleValue, setTitleValue] = useState("");
   const [localDisplayName, setLocalDisplayName] = useState<string | null>(displayName ?? null);
@@ -277,21 +275,9 @@ export default function AnalysisResults({
     }
   }
 
-  const defaultBrainTitle = (localDisplayName ?? filename).replace(/\.[^.]+$/, "");
 
   return (
     <div className="flex flex-col gap-4">
-      {brainOpen && (
-        <BrainModal
-          defaultTitle={defaultBrainTitle}
-          sections={sections}
-          fkScore={fkScore}
-          effectivenessScore={derivedEffectivenessScore}
-          promoType={initialTraining?.promoType ?? null}
-          calibratedEffectiveness={effectivenessOverride}
-          onClose={() => setBrainOpen(false)}
-        />
-      )}
       {reanalyzeError && (
         <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg px-4 py-3 text-sm">
           Re-analyze failed: {reanalyzeError}
@@ -354,15 +340,6 @@ export default function AnalysisResults({
                 {reanalyzing ? "Re-analyzing…" : "↺ Re-analyze"}
               </button>
             )}
-            <button
-              onClick={() => setBrainOpen(true)}
-              className="flex items-center gap-2 px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-medium border transition-colors"
-              style={{ borderColor: NAVY_BORDER, color: NAVY, background: NAVY_BG }}
-              onMouseEnter={e => (e.currentTarget.style.background = "#dce8f8")}
-              onMouseLeave={e => (e.currentTarget.style.background = NAVY_BG)}
-            >
-              🧠 Add to Brain
-            </button>
             <button
               onClick={handleExport}
               disabled={exporting}

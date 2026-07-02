@@ -94,6 +94,7 @@ export default function PerformanceTab() {
   useEffect(() => {
     void (async () => {
       await load();
+      let synced = false;
       try {
         const first = await (await fetch("/api/performance")).json();
         if (first?.sheetConfigured) {
@@ -106,12 +107,28 @@ export default function PerformanceTab() {
             const j = await res.json();
             say(`Auto-synced ${j.imported} rows from the Google Sheet (${j.added} new, ${j.updated} refreshed)`);
             await load();
+            synced = true;
           }
         }
       } catch {
         /* auto-sync is best-effort — the manual button remains */
       }
+      // Auto-learn: teach the brain from newly-matched promos that have real
+      // results and haven't been taught. Bounded — taught promos are skipped,
+      // so this is a no-op once everything is learned.
+      if (synced) {
+        try {
+          const cur = await (await fetch("/api/performance")).json();
+          const ready = (cur.views ?? []).filter(
+            (v: View) => v.match && v.derivation && !v.record.learnedAt
+          ).length;
+          if (ready > 0) await teach();
+        } catch {
+          /* auto-learn is best-effort — the manual button remains */
+        }
+      }
     })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [load]);
 
   const importCsv = useCallback(async (file: File) => {
