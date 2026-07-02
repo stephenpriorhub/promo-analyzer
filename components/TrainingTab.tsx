@@ -265,11 +265,15 @@ export default function TrainingTab({
           style={{ color: NAVY }}
         >
           Promo Type
-          {pricePoint != null && (
+          {pricePoint != null ? (
             <span className="ml-1 font-normal normal-case text-gray-400">
               · auto-set from price ${pricePoint.toLocaleString()}{reviewPromoType ? ` → ${reviewPromoType}` : ""}
             </span>
-          )}
+          ) : reviewPromoType ? (
+            <span className="ml-1 font-normal normal-case text-gray-400">
+              · inferred from cart value → {reviewPromoType} (no price in offer — click to correct)
+            </span>
+          ) : null}
         </label>
         <div className="flex flex-wrap gap-2">
           {PROMO_TYPES.map((t) => {

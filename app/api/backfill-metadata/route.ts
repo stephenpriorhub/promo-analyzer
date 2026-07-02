@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
-import { backfillMetadataCanonical, backfillSubScores, backfillPromoTypes } from "@/lib/reviews-store";
+import { backfillMetadataCanonical, backfillSubScores, backfillPromoTypes, backfillProxyPromoTypes } from "@/lib/reviews-store";
+import { getAllPerformanceRecords } from "@/lib/performance-db";
+import { normalizeCode } from "@/lib/promo-stats";
+import { classifyRowByCartValue } from "@/lib/promo-classify";
+import type { PromoType } from "@/lib/promo-types";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -17,5 +21,18 @@ export async function POST() {
   // Similar-Promo Outcomes (derived from their stored effectiveness text).
   const subScores = backfillSubScores();
   const promoTypes = backfillPromoTypes();
-  return NextResponse.json({ ok: true, ...result, subScoresBackfilled: subScores.updated, promoTypesBackfilled: promoTypes.updated });
+  // Cart-value fallback for matched promos whose offer had no parseable price.
+  const typeByCode = new Map<string, PromoType>();
+  for (const rec of getAllPerformanceRecords()) {
+    const t = classifyRowByCartValue(rec.stats);
+    if (t) typeByCode.set(normalizeCode(rec.promoCode), t);
+  }
+  const proxyTypes = backfillProxyPromoTypes(typeByCode, normalizeCode);
+  return NextResponse.json({
+    ok: true,
+    ...result,
+    subScoresBackfilled: subScores.updated,
+    promoTypesBackfilled: promoTypes.updated,
+    proxyTypesBackfilled: proxyTypes.updated,
+  });
 }

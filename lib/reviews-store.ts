@@ -52,7 +52,7 @@ export interface SavedReview {
   promoRunStartDate?: string | null; // approx date the promo started running (captured at upload)
   promoCode?: string | null; // join key to the external performance sheet (optional; only some promos have one)
   promoType?: PromoType | null;     // canonical type — price-derived unless set manually
-  promoTypeSource?: "price" | "manual"; // manual always wins over the price rule
+  promoTypeSource?: "price" | "manual" | "proxy"; // manual wins; "proxy" = inferred from the matched record's cart value when no price
   pricePoint?: number | null;       // headline price parsed from the offer (drives the type rule)
   publisher?: string | null; // editable; auto-seeded from detection, user-correctable
   gurus?: string[];          // editable; editors/strategists only (hosts excluded)
@@ -593,15 +593,44 @@ export function updateReviewRunDate(id: string, promoRunStartDate: string | null
   return true;
 }
 
-/** Manual promo-type override — wins over the price rule permanently. */
-export function updateReviewPromoType(id: string, promoType: PromoType | null): boolean {
+/** Set the promo type. Defaults to a manual override (wins over the price rule). */
+export function updateReviewPromoType(
+  id: string,
+  promoType: PromoType | null,
+  source: "manual" | "proxy" = "manual"
+): boolean {
   const reviews = readReviews();
   const idx = reviews.findIndex((r) => r.id === id);
   if (idx === -1) return false;
   reviews[idx].promoType = promoType;
-  reviews[idx].promoTypeSource = promoType ? "manual" : undefined;
+  reviews[idx].promoTypeSource = promoType ? source : undefined;
   writeReviews(reviews);
   return true;
+}
+
+/**
+ * Fallback typing for matched promos whose offer had no parseable price: infer
+ * the type from the matched performance record's cart value. Only fills reviews
+ * that are still untyped and not manually set. `typeByNormalizedCode` maps a
+ * normalized creative code → the cart-value-derived PromoType.
+ */
+export function backfillProxyPromoTypes(
+  typeByNormalizedCode: Map<string, PromoType>,
+  normalize: (code: string) => string
+): { updated: number } {
+  const reviews = readReviews();
+  let updated = 0;
+  for (const r of reviews) {
+    if (r.promoType || r.promoTypeSource === "manual" || !r.promoCode) continue;
+    const t = typeByNormalizedCode.get(normalize(r.promoCode));
+    if (t) {
+      r.promoType = t;
+      r.promoTypeSource = "proxy";
+      updated++;
+    }
+  }
+  if (updated) writeReviews(reviews);
+  return { updated };
 }
 
 /**
