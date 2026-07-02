@@ -14,7 +14,7 @@ import PromoMetadata from "./PromoMetadata";
 import BrainModal from "./BrainModal";
 import TrainingTab from "./TrainingTab";
 import DocumentsTab from "./DocumentsTab";
-import SimilarOutcomes from "./SimilarOutcomes";
+import RealResults from "./RealResults";
 
 const NAVY = "#012479";
 const NAVY_LIGHT = "#0a3a9e";
@@ -147,13 +147,17 @@ export default function AnalysisResults({
   // Match the sidebar label format: displayName if set, else filename without extension
   const shownTitle = localDisplayName ?? filename.replace(/\.[^.]+$/, "");
   const [effectivenessOverride, setEffectivenessOverride] = useState<string | null>(null);
+  // Tracked here (not just in PromoMetadata) so the Real-World Results panel
+  // appears the moment a creative code is set, without a reload.
+  const [livePromoCode, setLivePromoCode] = useState<string | null>(initialPromoCode ?? null);
 
   // Reset local state whenever the underlying review changes
   useEffect(() => {
     setEffectivenessOverride(calibratedEffectiveness ?? null);
     setLocalDisplayName(displayName ?? null);
     setEditingTitle(false);
-  }, [reviewId, filename, displayName, calibratedEffectiveness]);
+    setLivePromoCode(initialPromoCode ?? null);
+  }, [reviewId, filename, displayName, calibratedEffectiveness, initialPromoCode]);
 
   const effectivenessContent = effectivenessOverride ?? sections.effectiveness;
   // Final score is the code-derived value passed in (effectivenessScore). When a
@@ -370,8 +374,8 @@ export default function AnalysisResults({
 
       <ProgressBar sections={sections} streaming={streaming} pct={pct} />
 
-      {/* Real-outcome comparables — separate from the Copy Quality Score by design */}
-      {reviewId && !streaming && <SimilarOutcomes reviewId={reviewId} />}
+      {/* Real-world results — shown only when a creative code is set and data exists */}
+      {reviewId && !streaming && <RealResults promoCode={livePromoCode} />}
 
       {/* Tabs */}
       <div className="border-b" style={{ borderColor: NAVY_BORDER }}>
@@ -430,6 +434,7 @@ export default function AnalysisResults({
                 initialGurus={initialGurus}
                 initialProduct={initialProduct}
                 onUpdated={onScoreApplied}
+                onPromoCodeChange={setLivePromoCode}
               />
             )}
             <OfferSection

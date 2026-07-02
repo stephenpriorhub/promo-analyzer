@@ -18,7 +18,7 @@ import {
   type PerformanceEnrichment,
 } from "@/lib/performance-db";
 import { deriveTiers, type TierDerivation } from "@/lib/performance-tier";
-import { fetchAllSheetStats, isPromoStatsConfigured, normalizeCode } from "@/lib/promo-stats";
+import { fetchAllSheetStats, getSheetLoadError, isPromoStatsConfigured, normalizeCode } from "@/lib/promo-stats";
 import { getAllReviews, updateReviewPromoCode } from "@/lib/reviews-store";
 
 export const runtime = "nodejs";
@@ -90,7 +90,10 @@ export async function POST(req: NextRequest) {
     }
     const all = await fetchAllSheetStats();
     if (all.length === 0) {
-      return NextResponse.json({ error: "Sheet returned no rows (check sharing with the service account and the code column header)." }, { status: 400 });
+      return NextResponse.json(
+        { error: getSheetLoadError() ?? "Sheet returned no rows (check sharing with the service account and the code column header)." },
+        { status: 400 }
+      );
     }
     const result = upsertPerformanceRecords(all, "sheet");
     return NextResponse.json({ ok: true, ...result, imported: all.length });

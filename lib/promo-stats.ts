@@ -116,6 +116,14 @@ async function getAccessToken(sa: ServiceAccount): Promise<string | null> {
 // ---- sheet fetch + parse (cached map) ---------------------------------------
 let mapCache: { at: number; map: Map<string, PromoStats> } | null = null;
 
+/** Why the last sheet load produced no data — surfaced to the UI for setup debugging. */
+let lastLoadError: string | null = null;
+export function getSheetLoadError(): string | null {
+  return lastLoadError;
+}
+/** Failed/empty loads only cache briefly so a fixed setup shows up fast. */
+const EMPTY_TTL_MS = 30_000;
+
 /** Normalize a promo code for matching: trim, uppercase, collapse inner whitespace. */
 export function normalizeCode(code: string): string {
   return code.trim().toUpperCase().replace(/\s+/g, "");
@@ -134,17 +142,21 @@ function findCodeColumn(headers: string[]): number {
 
 async function loadMap(): Promise<Map<string, PromoStats>> {
   const now = Date.now();
-  if (mapCache && now - mapCache.at < ttlMs()) return mapCache.map;
+  if (mapCache && now - mapCache.at < (mapCache.map.size > 0 ? ttlMs() : EMPTY_TTL_MS)) {
+    return mapCache.map;
+  }
 
   const empty = new Map<string, PromoStats>();
   const sa = loadServiceAccount();
   const sheetId = process.env.PERFORMANCE_SHEET_ID;
   if (!sa || !sheetId) {
+    lastLoadError = "GOOGLE_SERVICE_ACCOUNT_JSON or PERFORMANCE_SHEET_ID not set/parseable";
     mapCache = { at: now, map: empty };
     return empty;
   }
   const token = await getAccessToken(sa);
   if (!token) {
+    lastLoadError = "Google auth failed - the service-account JSON's private key could not mint a token (re-paste the full JSON file contents)";
     mapCache = { at: now, map: empty };
     return empty;
   }
@@ -155,13 +167,23 @@ async function loadMap(): Promise<Map<string, PromoStats>> {
       headers: { Authorization: `Bearer ${token}` },
     });
     if (!res.ok) {
-      console.warn("[promo-stats] sheet fetch failed:", res.status, (await res.text()).slice(0, 200));
+      const body = (await res.text()).slice(0, 200);
+      console.warn("[promo-stats] sheet fetch failed:", res.status, body);
+      lastLoadError =
+        res.status === 403
+          ? `Google says access denied (403) - share the sheet with ${sa.client_email} (Viewer)`
+          : res.status === 404
+            ? "Sheet not found (404) - check PERFORMANCE_SHEET_ID (the long id in the sheet URL)"
+            : res.status === 400
+              ? `Tab/range not found (400) - set PERFORMANCE_SHEET_RANGE to the exact tab name at the bottom of the sheet`
+              : `Sheets API error ${res.status}: ${body}`;
       mapCache = { at: now, map: empty };
       return empty;
     }
     const json = (await res.json()) as { values?: string[][] };
     const rows = json.values ?? [];
     if (rows.length < 2) {
+      lastLoadError = "The tab was readable but has fewer than 2 rows - is PERFORMANCE_SHEET_RANGE pointing at the right tab?";
       mapCache = { at: now, map: empty };
       return empty;
     }
@@ -169,6 +191,7 @@ async function loadMap(): Promise<Map<string, PromoStats>> {
     const codeIdx = findCodeColumn(headers);
     if (codeIdx === -1) {
       console.warn("[promo-stats] no promo_code/code column found in sheet headers:", headers);
+      lastLoadError = `No creative-code column found. Expected a header like "Creative Code" - the tab's headers are: ${headers.join(", ")}`;
       mapCache = { at: now, map: empty };
       return empty;
     }
@@ -185,10 +208,12 @@ async function loadMap(): Promise<Map<string, PromoStats>> {
       });
       map.set(normalizeCode(rawCode), { promoCode: rawCode.trim(), stats });
     }
+    lastLoadError = null;
     mapCache = { at: now, map };
     return map;
   } catch (e) {
     console.warn("[promo-stats] sheet fetch error:", e);
+    lastLoadError = e instanceof Error ? e.message : "network error reaching the Sheets API";
     mapCache = { at: now, map: empty };
     return empty;
   }

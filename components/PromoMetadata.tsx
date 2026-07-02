@@ -13,6 +13,8 @@ interface Props {
   initialGurus?: string[];
   initialProduct?: string | null;
   onUpdated?: () => void;
+  /** Fires when the creative code is committed, so parents can react live. */
+  onPromoCodeChange?: (code: string | null) => void;
 }
 
 interface Options {
@@ -83,6 +85,7 @@ export default function PromoMetadata({
   initialGurus,
   initialProduct,
   onUpdated,
+  onPromoCodeChange,
 }: Props) {
   const [promoCode, setPromoCode] = useState(initialPromoCode ?? "");
   const [publisher, setPublisher] = useState(initialPublisher ?? "");
@@ -146,6 +149,7 @@ export default function PromoMetadata({
     setPromoCode(v);
     save({ promoCode: v || null });
     loadStats(v);
+    onPromoCodeChange?.(v || null);
   };
   const addGuru = (g: string) => {
     const v = g.trim();
