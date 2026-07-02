@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { backfillMetadataCanonical } from "@/lib/reviews-store";
+import { backfillMetadataCanonical, backfillSubScores } from "@/lib/reviews-store";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -13,5 +13,8 @@ export const maxDuration = 60;
  */
 export async function POST() {
   const result = await backfillMetadataCanonical();
-  return NextResponse.json({ ok: true, ...result });
+  // Also fill missing sub-score profiles so older reviews can participate in
+  // Similar-Promo Outcomes (derived from their stored effectiveness text).
+  const subScores = backfillSubScores();
+  return NextResponse.json({ ok: true, ...result, subScoresBackfilled: subScores.updated });
 }

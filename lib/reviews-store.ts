@@ -32,6 +32,14 @@ export interface TrainingData {
   lastUpdated: string;
   calibratedEffectiveness?: string; // re-evaluated effectiveness after training feedback
   isBestPerformer?: boolean;        // manually flagged as all-time / gold standard
+  /**
+   * Where performanceScore came from. "learned" = auto-derived from the
+   * performance sheet pipeline. Decision of record 2026-06-26: real-outcome
+   * data stays out of the craft-scoring prompt — learned entries are excluded
+   * from getTrainingExamples() (they still feed calibration stats and the
+   * Similar-Promo Outcomes layer, which is where prediction belongs).
+   */
+  source?: "publisher" | "learned";
 }
 
 export interface SavedReview {
@@ -110,7 +118,11 @@ export function getTrainingExamples(): Array<{
   bigIdea: string;
   isBestPerformer: boolean;
 }> {
-  const reviews = readReviews().filter((r) => r.training != null);
+  // Learned (sheet-derived) entries are excluded — only publisher-entered
+  // training feedback may calibrate the craft-scoring prompt.
+  const reviews = readReviews().filter(
+    (r) => r.training != null && r.training.source !== "learned"
+  );
   return reviews.map((r) => {
     const name = r.displayName ?? r.filename.replace(/\.[^.]+$/, "");
     let bigIdea = "";
@@ -349,6 +361,27 @@ export function getDistinctMetaValues(): { publishers: string[]; gurus: string[]
   }
   const srt = (s: Set<string>) => [...s].sort((a, b) => a.localeCompare(b));
   return { publishers: srt(publishers), gurus: srt(gurus), products: srt(products) };
+}
+
+/**
+ * One-time backfill: derive + persist the 8 sub-scores for reviews that predate
+ * the trust upgrade (or were never re-analyzed). Without a full sub-score
+ * profile a review can't participate in Similar-Promo Outcomes. Never touches
+ * effectivenessScore/predictedScore — only fills the missing subScores field.
+ */
+export function backfillSubScores(): { updated: number; total: number } {
+  const reviews = readReviews();
+  let updated = 0;
+  for (const r of reviews) {
+    if (r.subScores && r.subScores.length > 0) continue;
+    const { subScores } = deriveScore(r.sections.effectiveness ?? "");
+    if (subScores.length > 0) {
+      r.subScores = subScores;
+      updated++;
+    }
+  }
+  if (updated) writeReviews(reviews);
+  return { updated, total: reviews.length };
 }
 
 /** One-time backfill: fill missing publisher/gurus/product on existing reviews. Returns count updated. */

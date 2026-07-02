@@ -122,11 +122,14 @@ export function normalizeCode(code: string): string {
 }
 
 function findCodeColumn(headers: string[]): number {
-  const idx = headers.findIndex((h) => {
-    const n = h.trim().toLowerCase().replace(/[\s_]+/g, "");
-    return n === "promocode" || n === "code" || n === "promo";
-  });
-  return idx; // -1 if not found
+  // Priority order matters: "Creative Code" is the Agora export header.
+  for (const wanted of ["creativecode", "promocode", "creative", "code", "promo"]) {
+    const idx = headers.findIndex(
+      (h) => h.trim().toLowerCase().replace(/[\s_]+/g, "") === wanted
+    );
+    if (idx !== -1) return idx;
+  }
+  return -1;
 }
 
 async function loadMap(): Promise<Map<string, PromoStats>> {
@@ -196,6 +199,12 @@ export async function getPromoStats(code: string | null | undefined): Promise<Pr
   if (!code || !code.trim()) return null;
   const map = await loadMap();
   return map.get(normalizeCode(code)) ?? null;
+}
+
+/** All rows from the performance sheet (empty when unconfigured). Used by the bulk importer. */
+export async function fetchAllSheetStats(): Promise<PromoStats[]> {
+  const map = await loadMap();
+  return [...map.values()];
 }
 
 /** True when the performance sheet integration is configured (creds + sheet id present). */

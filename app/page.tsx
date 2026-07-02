@@ -5,6 +5,7 @@ import PromoUploader from "@/components/PromoUploader";
 import AnalysisResults from "@/components/AnalysisResults";
 import PastReviews from "@/components/PastReviews";
 import LessonsTab from "@/components/LessonsTab";
+import PerformanceTab from "@/components/PerformanceTab";
 import type { AnalysisSections, SavedReview, TrainingData } from "@/lib/reviews-store";
 import type { FKScore } from "@/lib/fk-score";
 import { readingEaseLabel } from "@/lib/fk-score";
@@ -65,7 +66,8 @@ type ViewState =
   | { type: "upload" }
   | { type: "job"; id: string }
   | { type: "review"; data: SavedReview }
-  | { type: "lessons" };
+  | { type: "lessons" }
+  | { type: "performance" };
 
 export default function Home() {
   const [jobs, setJobs] = useState<Job[]>([]);
@@ -307,6 +309,24 @@ export default function Home() {
             <span className="hidden sm:inline">Lessons Learned</span>
           </button>
           <button
+            onClick={() =>
+              setView((prev) => (prev.type === "performance" ? { type: "upload" } : { type: "performance" }))
+            }
+            className="text-xs sm:text-sm px-2 sm:px-3 py-1.5 rounded border transition-colors font-medium whitespace-nowrap"
+            style={{
+              borderColor: "rgba(255,255,255,0.3)",
+              color: "white",
+              background: view.type === "performance" ? "rgba(255,255,255,0.18)" : "transparent",
+            }}
+            onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.1)")}
+            onMouseLeave={(e) =>
+              (e.currentTarget.style.background =
+                view.type === "performance" ? "rgba(255,255,255,0.18)" : "transparent")
+            }
+          >
+            Performance
+          </button>
+          <button
             onClick={() => fileInputRef.current?.click()}
             className="text-xs sm:text-sm px-2 sm:px-3 py-1.5 rounded border transition-colors font-medium whitespace-nowrap"
             style={{ borderColor: "rgba(255,255,255,0.3)", color: "white", background: "transparent" }}
@@ -365,6 +385,9 @@ export default function Home() {
 
           {/* Lessons Learned — global knowledge base */}
           {view.type === "lessons" && <LessonsTab />}
+
+          {/* Real-world performance data + brain teaching */}
+          {view.type === "performance" && <PerformanceTab />}
 
           {/* Upload screen */}
           {view.type === "upload" && (

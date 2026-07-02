@@ -14,6 +14,7 @@ import PromoMetadata from "./PromoMetadata";
 import BrainModal from "./BrainModal";
 import TrainingTab from "./TrainingTab";
 import DocumentsTab from "./DocumentsTab";
+import SimilarOutcomes from "./SimilarOutcomes";
 
 const NAVY = "#012479";
 const NAVY_LIGHT = "#0a3a9e";
@@ -368,6 +369,9 @@ export default function AnalysisResults({
       </div>
 
       <ProgressBar sections={sections} streaming={streaming} pct={pct} />
+
+      {/* Real-outcome comparables — separate from the Copy Quality Score by design */}
+      {reviewId && !streaming && <SimilarOutcomes reviewId={reviewId} />}
 
       {/* Tabs */}
       <div className="border-b" style={{ borderColor: NAVY_BORDER }}>
