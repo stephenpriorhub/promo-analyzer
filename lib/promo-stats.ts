@@ -171,7 +171,9 @@ async function loadMap(): Promise<Map<string, PromoStats>> {
       console.warn("[promo-stats] sheet fetch failed:", res.status, body);
       lastLoadError =
         res.status === 403
-          ? `Google says access denied (403) - share the sheet with ${sa.client_email} (Viewer)`
+          ? body.includes("has not been used") || body.includes("is disabled")
+            ? "The Google Sheets API is not enabled for the service account's project - open https://console.cloud.google.com/apis/library/sheets.googleapis.com (make sure the right project is selected in the top bar), click Enable, wait ~1 minute, then retry"
+            : `Google says access denied (403) - share the sheet with ${sa.client_email} (Viewer). Google's reason: ${body}`
           : res.status === 404
             ? "Sheet not found (404) - check PERFORMANCE_SHEET_ID (the long id in the sheet URL)"
             : res.status === 400
