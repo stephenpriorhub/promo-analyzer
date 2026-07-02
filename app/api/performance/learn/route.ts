@@ -83,6 +83,9 @@ export async function POST(req: NextRequest) {
 
   const targets = records.filter((rec) => {
     if (body.promoCode) return normalizeCode(rec.promoCode) === normalizeCode(body.promoCode);
+    // Only records with a matched review can learn — pre-filtering keeps a
+    // force pass from scanning ~1,400 unmatched industry rows.
+    if (!reviewByCode.has(normalizeCode(rec.promoCode))) return false;
     return body.force ? true : rec.learnedAt == null;
   });
 

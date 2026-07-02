@@ -130,6 +130,9 @@ export async function extractAndStoreLessons(params: ExtractLessonParams): Promi
 
     const message = await client.messages.create({
       model: EXTRACTION_MODEL,
+      // Structured summarization — low effort keeps Sonnet 5 fast here, so a
+      // multi-promo teach pass stays well inside the route's time budget.
+      output_config: { effort: "low" },
       max_tokens: 1024,
       tools: [LESSON_TOOL],
       tool_choice: { type: "tool", name: "record_lessons" },
