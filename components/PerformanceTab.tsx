@@ -1,13 +1,13 @@
 "use client";
 
 /**
- * Performance tab — analyzed promos that have real-world results.
- *
- * The main table lists ONLY promos you've analyzed whose creative code matches
- * a row in the performance data, with their complete stats, sortable, default
- * sorted by conversion rate. The full industry dataset stays loaded as baseline
- * context (what conversion rates are achievable) and powers tier ranking, but
- * isn't listed row-by-row — it's context, not the subject.
+ * Performance tab — EVERY analyzed promo, with the two scores side by side:
+ * Copy Quality (craft) and Predicted (k-NN from comparable promos' real
+ * results — a promo's own result never informs its own prediction). Promos
+ * with a matched creative code additionally show their real-world results, so
+ * predicted-vs-actual is always visible as a running accuracy check on the
+ * system. The full industry dataset stays loaded as baseline context and
+ * powers tier ranking, but isn't listed row-by-row.
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -16,35 +16,23 @@ import type { PerformanceTier } from "@/lib/learning-kb";
 
 const NAVY = "#012479";
 
-interface TierDerivation {
-  metric: string;
-  metricKind: "rate" | "absolute";
-  value: number;
-  percentile: number;
-  performanceScore: number;
-  tier: PerformanceTier;
-  tierSource: "derived" | "manual";
-  scheme: "5-tier" | "3-tier";
-  bucket: "acquisition" | "monetization";
-  pool: { bucket: "acquisition" | "monetization"; n: number };
-}
-
-interface PerfRecord {
-  promoCode: string;
-  stats: Record<string, string>;
-  publication: string | null;
-  guru: string | null;
+interface PromoRow {
+  reviewId: string;
+  name: string;
+  promoCode: string | null;
+  publisher: string | null;
+  product: string | null;
   promoType: string | null;
-  notes: string;
-  tierOverride: PerformanceTier | null;
-  learnedAt: string | null;
-  source: "csv" | "sheet";
-}
-
-interface View {
-  record: PerfRecord;
-  derivation: TierDerivation | null;
-  match: { reviewId: string; reviewName: string; hasTraining: boolean; copyScore: number | null; promoType: string | null } | null;
+  promoStatus: string | null;
+  copyScore: number | null;
+  predicted: { score: number; confidence: string } | null;
+  real: {
+    tier: PerformanceTier;
+    performanceScore: number;
+    bucket: "acquisition" | "monetization";
+    stats: Record<string, string>;
+    learnedAt: string | null;
+  } | null;
 }
 
 interface Baseline {
@@ -55,11 +43,11 @@ interface Baseline {
 }
 
 interface ApiData {
-  views: View[];
-  unmatchedReviews: Array<{ id: string; name: string; promoCode: string | null }>;
+  promos: PromoRow[];
   baseline: Baseline | null;
   sheetConfigured: boolean;
   asOf: string;
+  views: unknown[];
 }
 
 const TIER_STYLE: Record<PerformanceTier, { bg: string; fg: string; label: string }> = {
@@ -71,8 +59,33 @@ const TIER_STYLE: Record<PerformanceTier, { bg: string; fg: string; label: strin
 };
 const TIER_RANK: Record<PerformanceTier, number> = { gold_standard: 5, strong: 4, average: 3, weak: 2, failed: 1 };
 
-// Fixed leading columns, then dynamic stat columns discovered from the data.
-type SortKey = string; // "promo" | "code" | "publication" | "guru" | "copy" | "tier" | `stat:${string}`
+/** Find a stat column client-side (cost columns excluded). */
+function statCol(stats: Record<string, string>, pattern: RegExp): string | null {
+  return (
+    Object.keys(stats).find(
+      (h) => pattern.test(h) && !/cost|refund|cancel|chargeback|unsub|cpa|spend/i.test(h)
+    ) ?? null
+  );
+}
+function statOf(row: PromoRow, pattern: RegExp): string | null {
+  if (!row.real) return null;
+  const col = statCol(row.real.stats, pattern);
+  return col ? row.real.stats[col] : null;
+}
+function statNum(row: PromoRow, pattern: RegExp): number | null {
+  const raw = statOf(row, pattern);
+  if (raw == null) return null;
+  const col = statCol(row.real!.stats, pattern)!;
+  return normalizedStatNumber(raw, classifyStatColumn(col)) ?? toNumber(raw);
+}
+
+const ORDERS_RE = /gross\s*orders|orders?\b/i;
+const REVENUE_RE = /gross\s*revenue|total\s*revenue/i;
+const CONV_RE = /^conversion\s*rate$/i;
+
+type SortKey =
+  | "promo" | "code" | "publisher" | "type" | "status"
+  | "copy" | "predicted" | "realScore" | "tier" | "orders" | "revenue" | "conv";
 
 export default function PerformanceTab() {
   const [data, setData] = useState<ApiData | null>(null);
@@ -90,6 +103,29 @@ export default function PerformanceTab() {
 
   const say = (msg: string) => { setFlash(msg); setError(null); setTimeout(() => setFlash(null), 6000); };
   const fail = (msg: string) => { setError(msg); setFlash(null); };
+
+  const teach = useCallback(async (promoCode?: string) => {
+    setBusy(promoCode ?? "teach-all");
+    try {
+      const res = await fetch("/api/performance/learn", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(promoCode ? { promoCode } : {}),
+      });
+      const json = await res.json();
+      if (!res.ok) { fail(json.error ?? "Learning failed"); return; }
+      const learned = json.learned as Array<{ promoCode: string; lessonsAdded: number; error?: string }>;
+      const succeeded = learned.filter((l) => !l.error);
+      const failed = learned.filter((l) => l.error);
+      const lessons = succeeded.reduce((a, l) => a + l.lessonsAdded, 0);
+      const msg =
+        `Brain taught: ${succeeded.length} promo(s), ${lessons} lesson(s) extracted` +
+        (failed.length ? ` · ${failed.length} FAILED (still marked ready): ${failed.map((f) => f.promoCode).join(", ")}` : "") +
+        (json.brainLedger?.ok ? " · vault ledger updated" : " · vault ledger NOT updated");
+      if (failed.length || !json.brainLedger?.ok) fail(msg); else say(msg);
+      await load();
+    } finally { setBusy(null); }
+  }, [load]);
 
   useEffect(() => {
     void (async () => {
@@ -113,23 +149,19 @@ export default function PerformanceTab() {
       } catch {
         /* auto-sync is best-effort — the manual button remains */
       }
-      // Auto-learn: teach the brain from newly-matched promos that have real
-      // results and haven't been taught. Bounded — taught promos are skipped,
-      // so this is a no-op once everything is learned.
+      // Auto-learn: teach the brain from newly-matched promos with results that
+      // haven't been taught. Bounded — taught promos are skipped.
       if (synced) {
         try {
-          const cur = await (await fetch("/api/performance")).json();
-          const ready = (cur.views ?? []).filter(
-            (v: View) => v.match && v.derivation && !v.record.learnedAt
-          ).length;
+          const cur = (await (await fetch("/api/performance")).json()) as ApiData;
+          const ready = (cur.promos ?? []).filter((p) => p.real && !p.real.learnedAt).length;
           if (ready > 0) await teach();
         } catch {
-          /* auto-learn is best-effort — the manual button remains */
+          /* auto-learn is best-effort */
         }
       }
     })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [load]);
+  }, [load, teach]);
 
   const importCsv = useCallback(async (file: File) => {
     setBusy("import");
@@ -160,86 +192,51 @@ export default function PerformanceTab() {
     } finally { setBusy(null); }
   }, [load]);
 
-  const teach = useCallback(async (promoCode?: string) => {
-    setBusy(promoCode ?? "teach-all");
-    try {
-      const res = await fetch("/api/performance/learn", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(promoCode ? { promoCode } : {}),
-      });
-      const json = await res.json();
-      if (!res.ok) { fail(json.error ?? "Learning failed"); return; }
-      const learned = json.learned as Array<{ promoCode: string; lessonsAdded: number; error?: string }>;
-      const succeeded = learned.filter((l) => !l.error);
-      const failed = learned.filter((l) => l.error);
-      const lessons = succeeded.reduce((a, l) => a + l.lessonsAdded, 0);
-      const msg =
-        `Brain taught: ${succeeded.length} promo(s), ${lessons} lesson(s) extracted` +
-        (failed.length ? ` · ${failed.length} FAILED (still marked ready): ${failed.map((f) => f.promoCode).join(", ")}` : "") +
-        (json.brainLedger?.ok ? " · vault ledger updated" : " · vault ledger NOT updated");
-      if (failed.length || !json.brainLedger?.ok) fail(msg); else say(msg);
-      await load();
-    } finally { setBusy(null); }
-  }, [load]);
-
   if (!data) {
     return <div className="max-w-5xl mx-auto mt-12 text-center text-sm text-gray-400">Loading performance data…</div>;
   }
 
-  // Only analyzed promos that have real-world results
-  const rows = data.views.filter((v) => v.match && Object.keys(v.record.stats).length > 0);
-  const readyCount = rows.filter((v) => v.derivation && !v.record.learnedAt).length;
-  const learnedCount = rows.filter((v) => v.record.learnedAt).length;
+  const rows = data.promos ?? [];
+  const withReal = rows.filter((r) => r.real);
+  const readyCount = withReal.filter((r) => !r.real!.learnedAt).length;
 
-  // Discover the stat columns present across matched rows, in first-seen order
-  const statCols: string[] = [];
-  for (const v of rows) for (const k of Object.keys(v.record.stats)) if (!statCols.includes(k)) statCols.push(k);
-  const conversionCol =
-    statCols.find((c) => c.toLowerCase() === "conversion rate") ??
-    statCols.find((c) => classifyStatColumn(c) === "percent" && c.toLowerCase().includes("conversion")) ??
-    statCols.find((c) => classifyStatColumn(c) === "percent") ??
-    null;
+  const effectiveSortKey: SortKey = sortKey ?? "conv";
 
-  const effectiveSortKey: SortKey | null = sortKey ?? (conversionCol ? `stat:${conversionCol}` : "copy");
-
-  // Sortable value for a row under the active key
-  const sortVal = (v: View, key: SortKey): number | string | null => {
-    if (key === "promo") return v.match!.reviewName.toLowerCase();
-    if (key === "code") return v.record.promoCode.toLowerCase();
-    if (key === "publication") return (v.record.publication ?? "").toLowerCase();
-    if (key === "guru") return (v.record.guru ?? "").toLowerCase();
-    if (key === "type") return (v.match!.promoType ?? "").toLowerCase();
-    if (key === "copy") return v.match!.copyScore;
-    if (key === "tier") return v.derivation ? TIER_RANK[v.derivation.tier] : null;
-    if (key.startsWith("stat:")) {
-      const col = key.slice(5);
-      const raw = v.record.stats[col];
-      if (raw == null) return null;
-      const t = classifyStatColumn(col);
-      return t === "text" ? raw.toLowerCase() : normalizedStatNumber(raw, t) ?? toNumber(raw);
+  const sortVal = (r: PromoRow, key: SortKey): number | string | null => {
+    switch (key) {
+      case "promo": return r.name.toLowerCase();
+      case "code": return r.promoCode?.toLowerCase() ?? null;
+      case "publisher": return r.publisher?.toLowerCase() ?? null;
+      case "type": return r.promoType?.toLowerCase() ?? null;
+      case "status": return r.promoStatus?.toLowerCase() ?? null;
+      case "copy": return r.copyScore;
+      case "predicted": return r.predicted?.score ?? null;
+      case "realScore": return r.real?.performanceScore ?? null;
+      case "tier": return r.real ? TIER_RANK[r.real.tier] : null;
+      case "orders": return statNum(r, ORDERS_RE);
+      case "revenue": return statNum(r, REVENUE_RE);
+      case "conv": return statNum(r, CONV_RE);
     }
-    return null;
   };
 
   const sorted = [...rows].sort((a, b) => {
     const va = sortVal(a, effectiveSortKey);
     const vb = sortVal(b, effectiveSortKey);
     if (va == null && vb == null) return 0;
-    if (va == null) return 1;      // nulls always last
+    if (va == null) return 1; // nulls last
     if (vb == null) return -1;
-    let cmp: number;
-    if (typeof va === "number" && typeof vb === "number") cmp = va - vb;
-    else cmp = String(va).localeCompare(String(vb));
+    const cmp = typeof va === "number" && typeof vb === "number" ? va - vb : String(va).localeCompare(String(vb));
     return sortDir === "asc" ? cmp : -cmp;
   });
 
   const clickSort = (key: SortKey) => {
     if (effectiveSortKey === key) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
-    else { setSortKey(key); setSortDir(key === "promo" || key === "code" || key === "publication" || key === "guru" ? "asc" : "desc"); }
+    else {
+      setSortKey(key);
+      setSortDir(["promo", "code", "publisher", "type", "status"].includes(key) ? "asc" : "desc");
+    }
   };
   const arrow = (key: SortKey) => (effectiveSortKey === key ? (sortDir === "asc" ? " ▲" : " ▼") : "");
-
   const th = (key: SortKey, label: string, extra = "") => (
     <th
       className={`px-3 py-2 font-semibold cursor-pointer select-none whitespace-nowrap hover:underline ${extra}`}
@@ -254,9 +251,9 @@ export default function PerformanceTab() {
     <div className="max-w-full mx-auto">
       <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
         <div>
-          <h2 className="text-lg font-bold" style={{ color: NAVY }}>Analyzed Promos — Real-World Results</h2>
+          <h2 className="text-lg font-bold" style={{ color: NAVY }}>Promo Performance</h2>
           <p className="text-xs text-gray-500 mt-0.5">
-            {rows.length} analyzed promo{rows.length === 1 ? "" : "s"} with results · {learnedCount} taught to the brain
+            {rows.length} analyzed promos · {withReal.length} with real-world results · predicted vs actual tracks how well the system is learning
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -283,7 +280,6 @@ export default function PerformanceTab() {
         </div>
       </div>
 
-      {/* Industry baseline context */}
       {data.baseline && (
         <div className="mb-3 text-xs rounded-lg border px-3 py-2 flex flex-wrap gap-x-6 gap-y-1" style={{ borderColor: "#dde4f0", background: "#f8fafc" }}>
           <span className="font-semibold" style={{ color: NAVY }}>Industry baseline (conversion rate)</span>
@@ -299,8 +295,8 @@ export default function PerformanceTab() {
 
       {rows.length === 0 ? (
         <div className="mt-12 text-center text-sm text-gray-400 max-w-lg mx-auto">
-          <p className="font-medium text-gray-500 mb-2">No analyzed promos have real-world results yet.</p>
-          <p>Open any analyzed promo, set its <b>Creative Code</b> in Promo Details to match a code in your performance sheet, and it appears here with its full stats. The {data.baseline?.n.toLocaleString() ?? "industry"} sheet rows are loaded as baseline context.</p>
+          <p className="font-medium text-gray-500 mb-2">No analyzed promos yet.</p>
+          <p>Analyze a promo and it appears here with its Copy Quality and Predicted scores. Set its Creative Code to connect real-world results.</p>
         </div>
       ) : (
         <div className="overflow-x-auto rounded-lg border" style={{ borderColor: "#dde4f0" }}>
@@ -308,79 +304,78 @@ export default function PerformanceTab() {
             <thead>
               <tr className="text-left text-xs uppercase tracking-wide" style={{ background: "#f0f4fc", color: NAVY }}>
                 {th("promo", "Promo")}
-                {th("code", "Creative Code")}
-                {th("publication", "Publication")}
-                {th("guru", "Guru")}
+                {th("code", "Code")}
+                {th("publisher", "Publisher")}
                 {th("type", "Type")}
-                {th("copy", "Copy Score")}
+                {th("status", "Status")}
+                {th("copy", "Copy Quality", "text-right")}
+                {th("predicted", "Predicted", "text-right")}
+                {th("realScore", "Real Score", "text-right")}
                 {th("tier", "Tier")}
-                {statCols.map((c) => th(`stat:${c}`, c, "text-right"))}
+                {th("orders", "Orders", "text-right")}
+                {th("revenue", "Revenue", "text-right")}
+                {th("conv", "Conv. Rate", "text-right")}
                 <th className="px-3 py-2 font-semibold">Brain</th>
               </tr>
             </thead>
             <tbody>
-              {sorted.map(({ record, derivation, match }) => (
-                <tr key={record.promoCode} className="border-t" style={{ borderColor: "#eef1f8" }}>
-                  <td className="px-3 py-2 min-w-[12rem]">
-                    <a href={`/?review=${match!.reviewId}`} className="underline" style={{ color: NAVY }}>{match!.reviewName}</a>
-                  </td>
-                  <td className="px-3 py-2 font-mono text-xs">{record.promoCode}</td>
-                  <td className="px-3 py-2">{record.publication ?? <span className="text-gray-300">—</span>}</td>
-                  <td className="px-3 py-2">{record.guru ?? <span className="text-gray-300">—</span>}</td>
-                  <td className="px-3 py-2 text-xs">{match!.promoType ?? <span className="text-gray-300">—</span>}</td>
-                  <td className="px-3 py-2 text-right">{match!.copyScore != null ? match!.copyScore.toFixed(1) : <span className="text-gray-300">—</span>}</td>
-                  <td className="px-3 py-2">
-                    {derivation ? (
-                      <span className="inline-block text-xs font-semibold rounded-full px-2 py-0.5"
-                        style={{ background: TIER_STYLE[derivation.tier].bg, color: TIER_STYLE[derivation.tier].fg }}
-                        title={cohortLine(derivation)}>
-                        {TIER_STYLE[derivation.tier].label}
-                      </span>
-                    ) : <span className="text-[11px] text-gray-400" title="Needs ≥8 same-metric peers before a tier claim is honest.">—</span>}
-                  </td>
-                  {statCols.map((c) => {
-                    const raw = record.stats[c];
-                    const isConv = c === conversionCol;
-                    return (
-                      <td key={c} className={`px-3 py-2 text-right ${isConv ? "font-semibold" : ""}`} style={isConv ? { color: NAVY } : undefined}>
-                        {raw != null ? formatStatValue(raw, classifyStatColumn(c)) : <span className="text-gray-300">—</span>}
-                      </td>
-                    );
-                  })}
-                  <td className="px-3 py-2">
-                    {record.learnedAt ? (
-                      <button onClick={() => void teach(record.promoCode)} disabled={busy !== null}
-                        className="text-xs text-green-700 underline decoration-dotted disabled:opacity-50"
-                        title={`Taught ${record.learnedAt.slice(0, 10)} — click to re-teach with current stats`}>
-                        {busy === record.promoCode ? "…" : "✓ taught"}
-                      </button>
-                    ) : derivation ? (
-                      <button onClick={() => void teach(record.promoCode)} disabled={busy !== null}
-                        className="text-xs px-2 py-1 rounded text-white disabled:opacity-50" style={{ background: NAVY }}>
-                        {busy === record.promoCode ? "…" : "Teach"}
-                      </button>
-                    ) : <span className="text-[11px] text-gray-300">—</span>}
-                  </td>
-                </tr>
-              ))}
+              {sorted.map((r) => {
+                const orders = statOf(r, ORDERS_RE);
+                const revenue = statOf(r, REVENUE_RE);
+                const conv = statOf(r, CONV_RE);
+                const dash = <span className="text-gray-300">—</span>;
+                return (
+                  <tr key={r.reviewId} className="border-t" style={{ borderColor: "#eef1f8" }}>
+                    <td className="px-3 py-2 min-w-[11rem] max-w-[16rem]">
+                      <a href={`/?review=${r.reviewId}`} className="underline block truncate" style={{ color: NAVY }} title={r.name}>{r.name}</a>
+                    </td>
+                    <td className="px-3 py-2 font-mono text-xs">{r.promoCode ?? dash}</td>
+                    <td className="px-3 py-2 text-xs">{r.publisher ?? dash}</td>
+                    <td className="px-3 py-2 text-xs">{r.promoType ?? dash}</td>
+                    <td className="px-3 py-2 text-xs">{r.promoStatus ?? dash}</td>
+                    <td className="px-3 py-2 text-right font-medium">{r.copyScore != null ? r.copyScore.toFixed(1) : dash}</td>
+                    <td className="px-3 py-2 text-right" title={r.predicted ? `${r.predicted.confidence} confidence — own results excluded` : "Needs a full sub-score profile + enough comparables"}>
+                      {r.predicted ? <span className="font-medium" style={{ color: "#7c5e10" }}>{r.predicted.score.toFixed(1)}</span> : dash}
+                    </td>
+                    <td className="px-3 py-2 text-right">
+                      {r.real ? <span className="font-semibold" style={{ color: NAVY }}>{r.real.performanceScore.toFixed(1)}</span> : dash}
+                    </td>
+                    <td className="px-3 py-2">
+                      {r.real ? (
+                        <span className="inline-block text-xs font-semibold rounded-full px-2 py-0.5"
+                          style={{ background: TIER_STYLE[r.real.tier].bg, color: TIER_STYLE[r.real.tier].fg }}>
+                          {TIER_STYLE[r.real.tier].label}
+                        </span>
+                      ) : dash}
+                    </td>
+                    <td className="px-3 py-2 text-right">{orders ? formatStatValue(orders, "number") : dash}</td>
+                    <td className="px-3 py-2 text-right">{revenue ? formatStatValue(revenue, "currency") : dash}</td>
+                    <td className="px-3 py-2 text-right">{conv ? formatStatValue(conv, "percent") : dash}</td>
+                    <td className="px-3 py-2">
+                      {r.real?.learnedAt ? (
+                        <button onClick={() => void teach(r.promoCode!)} disabled={busy !== null}
+                          className="text-xs text-green-700 underline decoration-dotted disabled:opacity-50"
+                          title={`Taught ${r.real.learnedAt.slice(0, 10)} — click to re-teach with current stats`}>
+                          {busy === r.promoCode ? "…" : "✓ taught"}
+                        </button>
+                      ) : r.real ? (
+                        <button onClick={() => void teach(r.promoCode!)} disabled={busy !== null}
+                          className="text-xs px-2 py-1 rounded text-white disabled:opacity-50" style={{ background: NAVY }}>
+                          {busy === r.promoCode ? "…" : "Teach"}
+                        </button>
+                      ) : <span className="text-[11px] text-gray-300">—</span>}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
       )}
 
       <p className="text-[11px] text-gray-400 mt-3">
-        Sortable — click any column header (default: conversion rate, high to low). Tiers rank front-ends by total order volume and backends/mega-bundles by total revenue, each against its own kind across the full dataset (recomputed as data arrives, as of {data.asOf.slice(0, 10)}). Volume and revenue scale with list size, so larger lists rank higher regardless of copy — read tiers as reach-and-results, not copy merit alone. Teaching the brain merges the real result into the promo&apos;s training data, extracts copy lessons, and appends to the vault&apos;s Performance Ledger.
+        Sortable — click any column header (default: conversion rate; promos without results sort last). Copy Quality grades the craft; Predicted estimates real-world performance from comparable promos&apos; actual results — a promo&apos;s own result never feeds its own prediction, so predicted-vs-Real Score is an honest accuracy check. Tiers rank front-ends by order volume and backends/mega-bundles by revenue against the full industry dataset; volume and revenue scale with list size, so read tiers as reach-and-results, not copy merit alone (as of {data.asOf.slice(0, 10)}).
       </p>
     </div>
   );
-}
-
-function cohortLine(d: TierDerivation): string {
-  if (d.metric === "manual") return "manual tier set by publisher";
-  const rank = d.percentile >= 0.5
-    ? `top ${Math.max(Math.round((1 - d.percentile) * 100), 1)}%`
-    : `bottom ${Math.max(Math.round(d.percentile * 100), 1)}%`;
-  const kind = d.bucket === "acquisition" ? "order volume" : "revenue";
-  const cohort = d.bucket === "acquisition" ? "front-end promos" : "backend/mega promos";
-  return `${rank} by ${kind} · n=${d.pool.n} ${cohort} · ${d.scheme}`;
 }

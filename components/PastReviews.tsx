@@ -38,6 +38,35 @@ function displayNameFor(review: SavedReview) {
   return review.displayName ?? review.filename.replace(/\.[^.]+$/, "");
 }
 
+/** Compact filter select for the sidebar. */
+function FilterSelect({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  options: string[];
+  onChange: (v: string) => void;
+}) {
+  if (options.length === 0) return null;
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      className="w-full text-[11px] rounded border px-1 py-1 bg-white text-gray-600"
+      style={{ borderColor: value ? NAVY : "#e5e7eb", color: value ? NAVY : undefined, fontWeight: value ? 600 : undefined }}
+      title={`Filter by ${label}`}
+    >
+      <option value="">{label}: All</option>
+      {options.map((o) => (
+        <option key={o} value={o}>{o}</option>
+      ))}
+    </select>
+  );
+}
+
 export default function PastReviews({
   onLoad,
   onSelectJob,
@@ -50,6 +79,10 @@ export default function PastReviews({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
+  const [fPublisher, setFPublisher] = useState("");
+  const [fProduct, setFProduct] = useState("");
+  const [fType, setFType] = useState("");
+  const [fStatus, setFStatus] = useState("");
 
   async function fetchReviews() {
     try {
@@ -167,6 +200,20 @@ export default function PastReviews({
         </div>
       )}
 
+      {/* Filters */}
+      {reviews.length > 0 && (
+        <div className="px-3 pb-2 grid grid-cols-2 gap-1">
+          <FilterSelect label="Publisher" value={fPublisher} onChange={setFPublisher}
+            options={Array.from(new Set(reviews.map((r) => r.publisher).filter((x): x is string => !!x))).sort()} />
+          <FilterSelect label="Product" value={fProduct} onChange={setFProduct}
+            options={Array.from(new Set(reviews.map((r) => r.product).filter((x): x is string => !!x))).sort()} />
+          <FilterSelect label="Type" value={fType} onChange={setFType}
+            options={Array.from(new Set(reviews.map((r) => r.promoType ?? "").filter(Boolean))).sort()} />
+          <FilterSelect label="Status" value={fStatus} onChange={setFStatus}
+            options={Array.from(new Set(reviews.map((r) => r.promoStatus ?? "").filter(Boolean))).sort()} />
+        </div>
+      )}
+
       {/* Saved reviews */}
       {loading ? (
         <div className="text-xs text-gray-400 p-4">Loading past reviews...</div>
@@ -177,7 +224,12 @@ export default function PastReviews({
           Analyze a promo to save it here.
         </div>
       ) : (
-        reviews.map((review) => {
+        reviews.filter((r) =>
+          (!fPublisher || r.publisher === fPublisher) &&
+          (!fProduct || r.product === fProduct) &&
+          (!fType || r.promoType === fType) &&
+          (!fStatus || r.promoStatus === fStatus)
+        ).map((review) => {
           const date = new Date(review.date).toLocaleDateString("en-US", {
             month: "short",
             day: "numeric",

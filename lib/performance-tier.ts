@@ -79,6 +79,42 @@ const TIER_SCORE: Record<PerformanceTier, number> = {
 };
 
 /**
+ * Percentile → 1–10 performance score with a compressed top end (publisher
+ * direction 2026-07-02: "too many 9s — 8 is still very great, 7 is great, 6 is
+ * above average"). The old linear 1+9p handed a 9+ to anything past the 89th
+ * percentile; this curve reserves 9s for the top ~5% and 10 for the top ~1%,
+ * interpolating smoothly between anchors rather than hard bands.
+ *
+ *   p=0.50 → 5.5   p=0.70 → 7.0   p=0.85 → 8.0   p=0.95 → 9.0   p=0.99 → 9.7
+ */
+const SCORE_ANCHORS: Array<[number, number]> = [
+  [0.0, 1.0],
+  [0.05, 2.0],
+  [0.12, 3.0],
+  [0.25, 4.0],
+  [0.40, 5.0],
+  [0.55, 6.0],
+  [0.70, 7.0],
+  [0.85, 8.0],
+  [0.95, 9.0],
+  [0.99, 9.7],
+  [1.0, 10.0],
+];
+
+export function scoreFromPercentile(p: number): number {
+  const x = Math.min(1, Math.max(0, p));
+  for (let i = 1; i < SCORE_ANCHORS.length; i++) {
+    const [p1, s1] = SCORE_ANCHORS[i - 1];
+    const [p2, s2] = SCORE_ANCHORS[i];
+    if (x <= p2) {
+      const t = p2 === p1 ? 0 : (x - p1) / (p2 - p1);
+      return Math.round((s1 + t * (s2 - s1)) * 10) / 10;
+    }
+  }
+  return 10;
+}
+
+/**
  * Derive tiers, bucketing each promo by type and ranking it on that bucket's
  * metric (acquisition→orders, monetization→revenue) against same-bucket peers.
  * `promoTypeByCode` supplies the type for analyzed promos (keyed by normalized
@@ -125,7 +161,7 @@ export function deriveTiers(
       const derivedTier = scheme === "5-tier" ? fullTier(percentile) : reducedTier(percentile);
       const tier = v.rec.tierOverride ?? derivedTier;
       // 3-tier pools may not make decile claims: clamp away from gold/failed bands.
-      const rawScore = Math.round((1 + 9 * percentile) * 10) / 10;
+      const rawScore = scoreFromPercentile(percentile);
       const performanceScore =
         v.rec.tierOverride != null
           ? TIER_SCORE[v.rec.tierOverride]

@@ -233,6 +233,61 @@ export function predictPerformanceScore(review: SavedReview): PredictedPerforman
   return { score, n: pairs.length, neighbors: nbs.length, confidence, looAccuracy: Math.round(accuracy * 100) / 100 };
 }
 
+/**
+ * Batch predictions for every review, computed against ONE shared pair set and
+ * validation gate (much cheaper than per-review calls, identical semantics).
+ *
+ * Every prediction excludes the subject review's own pair — a promo's real
+ * result NEVER informs its own predicted score, even when it has data. That
+ * keeps predicted-vs-actual an honest accuracy measurement of the system.
+ * Returns a map reviewId → prediction (absent when ungated or no profile).
+ */
+export function predictAllPerformanceScores(reviews: SavedReview[]): Map<string, PredictedPerformance> {
+  const out = new Map<string, PredictedPerformance>();
+  const allPairs = reviews.map(toPair).filter((p): p is TrainingPair => p !== null);
+  // Gate on the full set once (per-review exclusion changes n by at most 1;
+  // recomputing LOO per review would be O(n³) for no methodological gain).
+  if (allPairs.length < MIN_PREDICTION_PAIRS) return out;
+  const { accuracy, baseRate } = leaveOneOutAccuracy(allPairs);
+  if (accuracy <= baseRate) return out;
+  const looAccuracy = Math.round(accuracy * 100) / 100;
+
+  for (const review of reviews) {
+    const vector = toVector(review.subScores);
+    if (!vector) continue;
+    const pairs = allPairs.filter((p) => p.reviewId !== review.id); // self-exclusion
+    if (pairs.length < MIN_PREDICTION_PAIRS) continue;
+    const subject = {
+      vector,
+      guru: (review.gurus ?? [])[0] ?? null,
+      publisher: review.publisher ?? null,
+      promoType: review.promoType ?? review.training?.promoType ?? null,
+    };
+    const nbs = neighborsOf(subject, pairs, kFor(pairs.length)).filter(
+      (nb) => nb.distance <= SIMILARITY_DIST_MAX
+    );
+    if (nbs.length < 3) continue;
+    let wsum = 0;
+    let vsum = 0;
+    for (const nb of nbs) {
+      const w = 1 / (1 + nb.distance);
+      wsum += w;
+      vsum += w * nb.performanceScore;
+    }
+    const meanDist = nbs.reduce((a, nb) => a + nb.distance, 0) / nbs.length;
+    const confidence = nbs.length >= 5 && meanDist < 1.5 ? "high"
+      : nbs.length >= 4 && meanDist < 2.2 ? "medium" : "low";
+    out.set(review.id, {
+      score: Math.round((vsum / wsum) * 10) / 10,
+      n: pairs.length,
+      neighbors: nbs.length,
+      confidence,
+      looAccuracy,
+    });
+  }
+  return out;
+}
+
 export function computeOutlook(review: SavedReview): OutlookResult {
   const off: OutlookResult = { mode: "off", n: 0, comparables: [], disclaimer: "" };
 

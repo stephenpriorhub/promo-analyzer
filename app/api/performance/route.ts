@@ -21,6 +21,7 @@ import { deriveTiers, type TierDerivation } from "@/lib/performance-tier";
 import { fetchAllSheetStats, getSheetLoadError, getSheetLoadStats, isPromoStatsConfigured, normalizeCode } from "@/lib/promo-stats";
 import { getAllReviews, updateReviewPromoCode } from "@/lib/reviews-store";
 import { classifyStatColumn, normalizedStatNumber } from "@/lib/stat-format";
+import { predictAllPerformanceScores } from "@/lib/predict";
 
 export const runtime = "nodejs";
 
@@ -93,11 +94,70 @@ function buildViews(): { views: PerformanceView[]; unmatchedReviews: Array<{ id:
   return { views, unmatchedReviews };
 }
 
+/** One row per analyzed promo: both scores always; real results when matched. */
+export interface PromoRow {
+  reviewId: string;
+  name: string;
+  promoCode: string | null;
+  publisher: string | null;
+  product: string | null;
+  promoType: string | null;
+  promoStatus: string | null;
+  copyScore: number | null;
+  /** k-NN prediction — the promo's OWN real result never informs it. */
+  predicted: { score: number; confidence: string } | null;
+  real: {
+    tier: string;
+    performanceScore: number;
+    bucket: string;
+    stats: Record<string, string>;
+    learnedAt: string | null;
+  } | null;
+}
+
+function buildPromoRows(): PromoRow[] {
+  const reviews = getAllReviews();
+  const records = getAllPerformanceRecords();
+  const recordByCode = new Map(records.map((r) => [normalizeCode(r.promoCode), r]));
+  const promoTypeByCode = new Map(
+    reviews.filter((r) => r.promoCode && r.promoType).map((r) => [normalizeCode(r.promoCode!), r.promoType!])
+  );
+  const derivations = deriveTiers(records, promoTypeByCode);
+  const predictions = predictAllPerformanceScores(reviews);
+
+  return reviews.map((r) => {
+    const rec = r.promoCode ? recordByCode.get(normalizeCode(r.promoCode)) ?? null : null;
+    const d = rec ? derivations.get(rec.promoCode) ?? null : null;
+    const p = predictions.get(r.id) ?? null;
+    return {
+      reviewId: r.id,
+      name: r.displayName ?? r.filename.replace(/\.[^.]+$/, ""),
+      promoCode: r.promoCode ?? null,
+      publisher: r.publisher ?? null,
+      product: r.product ?? null,
+      promoType: r.promoType ?? null,
+      promoStatus: r.promoStatus ?? null,
+      copyScore: r.effectivenessScore,
+      predicted: p ? { score: p.score, confidence: p.confidence } : null,
+      real: rec && d
+        ? {
+            tier: d.tier,
+            performanceScore: d.performanceScore,
+            bucket: d.bucket,
+            stats: rec.stats,
+            learnedAt: rec.learnedAt,
+          }
+        : null,
+    };
+  });
+}
+
 export async function GET() {
   const { views, unmatchedReviews } = buildViews();
   return NextResponse.json({
     views,
     unmatchedReviews,
+    promos: buildPromoRows(),
     baseline: conversionBaseline(getAllPerformanceRecords()),
     sheetConfigured: isPromoStatsConfigured(),
     asOf: new Date().toISOString(),
