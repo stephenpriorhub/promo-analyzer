@@ -205,28 +205,29 @@ export default function PromoMetadata({
           onCommit={(v) => { setProduct(v); save({ product: v || null }); }}
         />
 
-        {/* Guru(s) — multi */}
+        {/* Guru(s) — multi, chips inline inside the field (matches the other inputs) */}
         <div className="flex flex-col gap-1">
           <label className="text-xs font-semibold text-gray-600">Guru(s)</label>
-          <div className="flex flex-wrap gap-1.5 mb-1">
+          <div
+            className="w-full text-sm rounded-md border border-gray-300 px-2 py-1 flex flex-wrap items-center gap-1.5 focus-within:ring-2 bg-white"
+            style={{ ["--tw-ring-color" as string]: NAVY_BORDER, minHeight: "2.25rem" }}
+          >
             {gurus.map((g) => (
-              <span key={g} className="inline-flex items-center gap-1 text-xs rounded-full px-2 py-0.5 border" style={{ background: "white", borderColor: NAVY_BORDER, color: NAVY }}>
+              <span key={g} className="inline-flex items-center gap-1 text-xs rounded-full px-2 py-0.5 border" style={{ background: NAVY_BG, borderColor: NAVY_BORDER, color: NAVY }}>
                 {g}
                 <button onClick={() => removeGuru(g)} className="text-gray-400 hover:text-red-500 leading-none" aria-label={`Remove ${g}`}>×</button>
               </span>
             ))}
-            {gurus.length === 0 && <span className="text-xs text-gray-400">None yet</span>}
+            <input
+              list="guru-options"
+              value={guruDraft}
+              placeholder={gurus.length ? "Add another…" : "Select or type…"}
+              onChange={(e) => setGuruDraft(e.target.value)}
+              onBlur={() => guruDraft.trim() && addGuru(guruDraft)}
+              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addGuru(guruDraft); } }}
+              className="flex-1 min-w-[8rem] text-sm bg-transparent px-1 py-0.5 focus:outline-none"
+            />
           </div>
-          <input
-            list="guru-options"
-            value={guruDraft}
-            placeholder="Add a guru…"
-            onChange={(e) => setGuruDraft(e.target.value)}
-            onBlur={() => guruDraft.trim() && addGuru(guruDraft)}
-            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addGuru(guruDraft); } }}
-            className="w-full text-sm rounded-md border border-gray-300 px-2.5 py-1.5 focus:outline-none focus:ring-2"
-            style={{ ["--tw-ring-color" as string]: NAVY_BORDER }}
-          />
           <datalist id="guru-options">
             {options.gurus.filter((g) => !gurus.includes(g)).map((g) => <option key={g} value={g} />)}
           </datalist>
