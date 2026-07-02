@@ -154,6 +154,12 @@ async function loadMap(): Promise<Map<string, PromoStats>> {
     mapCache = { at: now, map: empty };
     return empty;
   }
+  if (/[/:]/.test(sheetId) || sheetId.includes("docs.google.com")) {
+    lastLoadError =
+      "PERFORMANCE_SHEET_ID looks like a full URL - it must be ONLY the id between /d/ and /edit in the sheet's address";
+    mapCache = { at: now, map: empty };
+    return empty;
+  }
   const token = await getAccessToken(sa);
   if (!token) {
     lastLoadError = "Google auth failed - the service-account JSON's private key could not mint a token (re-paste the full JSON file contents)";
@@ -173,7 +179,7 @@ async function loadMap(): Promise<Map<string, PromoStats>> {
         res.status === 403
           ? body.includes("has not been used") || body.includes("is disabled")
             ? "The Google Sheets API is not enabled for the service account's project - open https://console.cloud.google.com/apis/library/sheets.googleapis.com (make sure the right project is selected in the top bar), click Enable, wait ~1 minute, then retry"
-            : `Google says access denied (403) - share the sheet with ${sa.client_email} (Viewer). Google's reason: ${body}`
+            : `Google says access denied (403) on the sheet whose id starts "${sheetId.slice(0, 8)}..." - confirm PERFORMANCE_SHEET_ID matches the sheet you shared with ${sa.client_email}. Google's reason: ${body}`
           : res.status === 404
             ? "Sheet not found (404) - check PERFORMANCE_SHEET_ID (the long id in the sheet URL)"
             : res.status === 400
