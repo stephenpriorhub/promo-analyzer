@@ -419,15 +419,24 @@ export async function getCanonicalEntities(): Promise<CanonicalEntities> {
 
 /**
  * Guru name aliases → canonical name. Same person, different spellings in copy.
- * Keep this the single place aliases are resolved.
+ * Static seed aliases here; the publisher's merges (entity-overrides) extend
+ * them at runtime — a merge on the Directory page permanently teaches every
+ * resolver the correction.
  */
 const GURU_ALIASES: Record<string, string> = {
   "alex green": "Alexander Green",
+  // Vault note title leaking through a wikilink target — same person.
+  "marc lichtenfeld - oxford club": "Marc Lichtenfeld",
 };
 
-/** Resolve a guru name to its canonical form (alias-aware). */
+/** Resolve a guru name to its canonical form (alias-aware: static + learned merges). */
 export function canonicalGuruName(name: string): string {
-  return GURU_ALIASES[name.toLowerCase().replace(/\s+/g, " ").trim()] ?? name;
+  const key = name.toLowerCase().replace(/\s+/g, " ").trim();
+  const staticHit = GURU_ALIASES[key];
+  // Lazy import — entity-overrides is fs-backed and server-only, same as this module.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { resolveAlias } = require("./entity-overrides") as typeof import("./entity-overrides");
+  return resolveAlias("guru", staticHit ?? name);
 }
 
 /**
@@ -469,8 +478,15 @@ export async function resolvePublisherForGurus(gurus: string[]): Promise<string 
       if (g) byGuru.set(g.toLowerCase(), parent); // live wins
     }
   }
+  // Publisher's manual reassignments (Directory page) win over everything.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { readOverrides } = require("./entity-overrides") as typeof import("./entity-overrides");
+  const overrides = readOverrides().guruPublisher;
   for (const g of gurus) {
-    const hit = byGuru.get(canonicalGuruName(g).toLowerCase());
+    const key = canonicalGuruName(g).toLowerCase();
+    const manual = overrides[key];
+    if (manual) return manual;
+    const hit = byGuru.get(key);
     if (hit) return hit;
   }
   return null;
@@ -490,6 +506,13 @@ function normPub(s: string): string {
  */
 export async function resolvePublisherForProduct(product: string | null | undefined): Promise<string | null> {
   if (!product || !product.trim()) return null;
+  // Publisher's manual reassignments (Directory page) win over everything.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { readOverrides, resolveAlias } = require("./entity-overrides") as typeof import("./entity-overrides");
+  const o = readOverrides();
+  const canonicalProduct = resolveAlias("product", product);
+  const manual = o.productPublisher[normPub(canonicalProduct)] ?? o.productPublisher[normPub(product)];
+  if (manual) return manual;
   const byPub = new Map<string, string>();
   const snap = (canonicalSnapshot as CanonicalEntities).publicationPublisher ?? {};
   for (const [p, parent] of Object.entries(snap)) if (parent) byPub.set(p, parent);
@@ -498,7 +521,7 @@ export async function resolvePublisherForProduct(product: string | null | undefi
     if (!parent || parent.startsWith("(") || !r.publication) continue;
     byPub.set(normPub(r.publication), parent); // live wins
   }
-  const key = normPub(product);
+  const key = normPub(canonicalProduct);
   if (byPub.has(key)) return byPub.get(key)!;
   // Loose containment either direction (handles "Trade of the Day Plus" vs the
   // alias row "Trade of the Day Plus (Monument Trend Advisory)").

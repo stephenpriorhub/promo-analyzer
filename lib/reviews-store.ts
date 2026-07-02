@@ -705,6 +705,36 @@ export function updateReviewGurus(id: string, gurus: string[]): boolean {
   return true;
 }
 
+/**
+ * Apply an entity merge/rename to EXISTING reviews so past data is corrected
+ * along with future resolution. Case-insensitive match on the old name.
+ * Returns how many reviews were rewritten.
+ */
+export function applyEntityMerge(kind: "guru" | "product" | "publisher", from: string, to: string): number {
+  const norm = (s: string) => s.toLowerCase().replace(/\s+/g, " ").trim();
+  const fromKey = norm(from);
+  const reviews = readReviews();
+  let rewritten = 0;
+  for (const r of reviews) {
+    let changed = false;
+    if (kind === "guru" && r.gurus?.some((g) => norm(g) === fromKey)) {
+      r.gurus = Array.from(new Set(r.gurus.map((g) => (norm(g) === fromKey ? to : g))));
+      changed = true;
+    }
+    if (kind === "product" && r.product && norm(r.product) === fromKey) {
+      r.product = to;
+      changed = true;
+    }
+    if (kind === "publisher" && r.publisher && norm(r.publisher) === fromKey) {
+      r.publisher = to;
+      changed = true;
+    }
+    if (changed) rewritten++;
+  }
+  if (rewritten) writeReviews(reviews);
+  return rewritten;
+}
+
 export function updateReviewPromoStatus(id: string, promoStatus: PromoStatus | null): boolean {
   const reviews = readReviews();
   const idx = reviews.findIndex((r) => r.id === id);
