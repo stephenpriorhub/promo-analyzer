@@ -50,14 +50,19 @@ For each lesson, determine:
 const LESSON_TOOL: Anthropic.Tool = {
   name: "record_lessons",
   description: "Record the generalizable lessons extracted from this promo training event.",
+  // strict guarantees the input validates against the schema exactly — without
+  // it the model occasionally emitted `lessons` as a non-array and broke parsing.
+  strict: true,
   input_schema: {
     type: "object",
+    additionalProperties: false,
     properties: {
       lessons: {
         type: "array",
         minItems: 1,
         items: {
           type: "object",
+          additionalProperties: false,
           properties: {
             lesson: { type: "string", description: "The generalizable insight, written as a principle" },
             category: {
@@ -143,8 +148,11 @@ export async function extractAndStoreLessons(params: ExtractLessonParams): Promi
     const toolUse = message.content.find(
       (b): b is Anthropic.ToolUseBlock => b.type === "tool_use"
     );
-    const extracted: ExtractedLesson[] =
-      (toolUse?.input as { lessons?: ExtractedLesson[] })?.lessons ?? [];
+    // Belt-and-suspenders alongside strict: never trust the shape blindly.
+    const rawLessons = (toolUse?.input as { lessons?: unknown })?.lessons;
+    const extracted: ExtractedLesson[] = Array.isArray(rawLessons)
+      ? (rawLessons as ExtractedLesson[])
+      : [];
 
     if (extracted.length === 0) {
       return { ok: true, lessonsAdded: 0 };
