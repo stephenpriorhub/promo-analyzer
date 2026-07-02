@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import { classifyStatColumn, formatStatValue } from "@/lib/stat-format";
 
 const NAVY = "#012479";
 const NAVY_BG = "#f0f4fc";
@@ -248,7 +249,7 @@ export default function PromoMetadata({
             {Object.entries(stats.stats).map(([k, v]) => (
               <div key={k} className="text-sm">
                 <span className="text-gray-500">{k}: </span>
-                <span className="font-semibold text-gray-800">{v}</span>
+                <span className="font-semibold text-gray-800">{formatStatValue(v, classifyStatColumn(k))}</span>
               </div>
             ))}
           </div>

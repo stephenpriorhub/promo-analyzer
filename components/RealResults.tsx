@@ -9,6 +9,7 @@
  */
 
 import { useEffect, useState } from "react";
+import { classifyStatColumn, formatStatValue } from "@/lib/stat-format";
 
 const NAVY = "#012479";
 
@@ -75,7 +76,7 @@ export default function RealResults({ promoCode }: { promoCode: string | null })
         {entries.map(([k, v]) => (
           <div key={k} className="text-xs">
             <span className="text-gray-400">{k}: </span>
-            <span className="font-semibold" style={{ color: NAVY }}>{v}</span>
+            <span className="font-semibold" style={{ color: NAVY }}>{formatStatValue(v, classifyStatColumn(k))}</span>
           </div>
         ))}
       </div>

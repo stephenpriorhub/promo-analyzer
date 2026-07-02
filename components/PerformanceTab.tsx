@@ -10,6 +10,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { classifyStatColumn, formatStatValue } from "@/lib/stat-format";
 import type { PerformanceTier } from "@/lib/learning-kb";
 
 const NAVY = "#012479";
@@ -281,7 +282,7 @@ export default function PerformanceTab() {
                   </td>
                   <td className="px-3 py-2 text-xs whitespace-nowrap">
                     {derivation && derivation.metric !== "manual" ? (
-                      <span>{derivation.metric}: <b>{record.stats[derivation.metric]}</b></span>
+                      <span>{derivation.metric}: <b>{formatStatValue(record.stats[derivation.metric], classifyStatColumn(derivation.metric))}</b></span>
                     ) : (
                       <span className="text-gray-400">{Object.keys(record.stats).length} stat cols</span>
                     )}

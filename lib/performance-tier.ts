@@ -19,6 +19,7 @@
 
 import type { PerformanceTier } from "./learning-kb";
 import type { PerformanceRecord } from "./performance-db";
+import { classifyStatColumn, normalizedStatNumber } from "./stat-format";
 
 /**
  * Metric whitelist, priority order, all higher-is-better. First hit wins.
@@ -136,7 +137,9 @@ export function deriveTiers(records: PerformanceRecord[]): Map<string, TierDeriv
     .map((rec) => {
       const detected = detectPrimaryMetric(rec);
       if (!detected) return null;
-      const value = parseStatNumber(rec.stats[detected.metric]);
+      // Rank on the unit-normalized value (percent → points) so ratio-scale and
+      // point-scale cells in the same column are compared on one scale.
+      const value = normalizedStatNumber(rec.stats[detected.metric], classifyStatColumn(detected.metric));
       if (value == null) return null;
       return { rec, metric: detected.metric, kind: detected.kind, value };
     })
