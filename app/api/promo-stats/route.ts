@@ -32,7 +32,7 @@ export async function GET(req: NextRequest) {
   }
 
   // Tier context from the imported dataset (needs peers to rank against)
-  let tier: { tier: string; line: string } | null = null;
+  let tier: { tier: string; line: string; performanceScore: number } | null = null;
   if (record) {
     const promoTypeByCode = new Map(
       getAllReviews()
@@ -40,7 +40,7 @@ export async function GET(req: NextRequest) {
         .map((r) => [normalizeCode(r.promoCode!), r.promoType!])
     );
     const d = deriveTiers(records, promoTypeByCode).get(record.promoCode);
-    if (d) tier = { tier: d.tier, line: describeDerivation(d) };
+    if (d) tier = { tier: d.tier, line: describeDerivation(d), performanceScore: d.performanceScore };
   }
 
   return NextResponse.json({ configured, stats, tier });

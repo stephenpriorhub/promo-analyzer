@@ -464,6 +464,9 @@ export default function AnalysisResults({
             effectivenessContent={effectivenessContent}
             initialTraining={initialTraining}
             initialRunDate={initialRunDate ?? null}
+            reviewPromoType={initialPromoType}
+            pricePoint={initialPricePoint}
+            promoCode={livePromoCode}
             onEffectivenessUpdate={setEffectivenessOverride}
             onApplied={onScoreApplied}
           />

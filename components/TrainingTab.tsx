@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { TrainingData } from "@/lib/reviews-store";
 import { PROMO_TYPES, type PromoType } from "@/lib/promo-types";
 
@@ -13,6 +13,11 @@ interface Props {
   effectivenessContent: string;
   initialTraining?: TrainingData;
   initialRunDate?: string | null;
+  /** Canonical promo type (price-derived unless manually set). */
+  reviewPromoType?: PromoType | null;
+  pricePoint?: number | null;
+  /** Creative code — used to look up real-world results for this promo. */
+  promoCode?: string | null;
   onEffectivenessUpdate: (newText: string) => void;
   onApplied?: () => void;
 }
@@ -85,17 +90,46 @@ export default function TrainingTab({
   effectivenessContent,
   initialTraining,
   initialRunDate,
+  reviewPromoType,
+  pricePoint,
+  promoCode,
   onEffectivenessUpdate,
   onApplied,
 }: Props) {
   const [runDate, setRunDate] = useState(initialRunDate ?? "");
   const [runDateSaved, setRunDateSaved] = useState(false);
+  // Promo type defaults to the price-derived canonical type; picking a button
+  // is a manual override that persists to the review.
   const [promoType, setPromoType] = useState<PromoType | null>(
-    initialTraining?.promoType ?? null
+    reviewPromoType ?? initialTraining?.promoType ?? null
   );
+  // Real-world data-derived score. When present it drives the performance score
+  // and supersedes manual entry (publisher rule: data wins).
+  const [dataScore, setDataScore] = useState<number | null>(null);
+  const [overrideData, setOverrideData] = useState(false);
   const [performanceScore, setPerformanceScore] = useState<number | null>(
     initialTraining?.performanceScore ?? null
   );
+
+  // Look up real results for this creative code — if it has a tiered outcome,
+  // that score is authoritative.
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      if (!promoCode?.trim()) { if (!cancelled) setDataScore(null); return; }
+      try {
+        const r = await (await fetch(`/api/promo-stats?code=${encodeURIComponent(promoCode)}`)).json();
+        const s = r?.tier?.performanceScore ?? null;
+        if (!cancelled) {
+          setDataScore(s);
+          if (s != null) setPerformanceScore(Math.round(s)); // reflect data in the selector
+        }
+      } catch {
+        /* soft */
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [promoCode]);
   const [myScore, setMyScore] = useState<number | null>(
     initialTraining?.myScore ?? null
   );
@@ -126,6 +160,10 @@ export default function TrainingTab({
       lastUpdated: new Date().toISOString(),
       calibratedEffectiveness: calibrated ?? initialTraining?.calibratedEffectiveness,
       isBestPerformer,
+      // A data-derived score must stay tagged "learned" so it never feeds the
+      // craft-scoring prompt (decision of record 2026-06-26); a hand-set or
+      // overridden score is publisher input.
+      source: dataScore != null && !overrideData ? "learned" : "publisher",
     };
     await fetch("/api/reviews", {
       method: "PATCH",
@@ -220,13 +258,18 @@ export default function TrainingTab({
         </p>
       </div>
 
-      {/* Promo Type */}
+      {/* Promo Type — auto-set from price, click to override */}
       <div>
         <label
           className="block text-xs font-semibold uppercase tracking-wider mb-1.5"
           style={{ color: NAVY }}
         >
           Promo Type
+          {pricePoint != null && (
+            <span className="ml-1 font-normal normal-case text-gray-400">
+              · auto-set from price ${pricePoint.toLocaleString()}{reviewPromoType ? ` → ${reviewPromoType}` : ""}
+            </span>
+          )}
         </label>
         <div className="flex flex-wrap gap-2">
           {PROMO_TYPES.map((t) => {
@@ -234,7 +277,17 @@ export default function TrainingTab({
             return (
               <button
                 key={t}
-                onClick={() => setPromoType(selected ? null : t)}
+                onClick={() => {
+                  const next = selected ? null : t;
+                  setPromoType(next);
+                  if (reviewId) {
+                    void fetch("/api/reviews", {
+                      method: "PATCH",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ id: reviewId, promoType: next }),
+                    });
+                  }
+                }}
                 className="px-3 py-1.5 rounded-lg text-xs font-medium border transition-all"
                 style={{
                   background: selected ? NAVY : "white",
@@ -259,13 +312,26 @@ export default function TrainingTab({
             Actual Performance Score
           </p>
           <p className="text-xs text-gray-500">
-            Based on real conversion data, revenue, and market results.
-            <span className="ml-1 font-semibold" style={{ color: NAVY }}>
-              High weight.
-            </span>
+            {dataScore != null && !overrideData ? (
+              <>
+                <span className="font-semibold text-green-700">Auto-set from real-world data ({dataScore.toFixed(1)}/10)</span> — supersedes manual entry.
+                <button onClick={() => setOverrideData(true)} className="ml-1 underline text-gray-400 hover:text-gray-600">override</button>
+              </>
+            ) : dataScore != null && overrideData ? (
+              <>
+                Manual override — real data suggests <b>{dataScore.toFixed(1)}/10</b>.
+                <button onClick={() => { setOverrideData(false); setPerformanceScore(Math.round(dataScore)); }} className="ml-1 underline text-gray-400 hover:text-gray-600">use data</button>
+              </>
+            ) : (
+              <>Based on real conversion data, revenue, and market results.<span className="ml-1 font-semibold" style={{ color: NAVY }}>High weight.</span> Set automatically once this promo has real results.</>
+            )}
           </p>
         </div>
-        <ScoreSelector value={performanceScore} onChange={setPerformanceScore} />
+        <ScoreSelector
+          value={performanceScore}
+          onChange={setPerformanceScore}
+          disabled={dataScore != null && !overrideData}
+        />
       </div>
 
       {/* My Score */}
