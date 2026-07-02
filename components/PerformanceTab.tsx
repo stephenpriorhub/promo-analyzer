@@ -82,6 +82,9 @@ export default function PerformanceTab() {
     if (res.ok) setData(await res.json());
   }, []);
 
+  const say = (msg: string) => { setFlash(msg); setError(null); setTimeout(() => setFlash(null), 6000); };
+  const fail = (msg: string) => { setError(msg); setFlash(null); };
+
   useEffect(() => {
     void (async () => {
       await load();
@@ -91,11 +94,27 @@ export default function PerformanceTab() {
       } catch {
         /* options are a nice-to-have — datalists just stay empty */
       }
+      // Auto-pull: when the Google Sheet is configured, silently refresh the
+      // whole dataset on tab open so the numbers are always current.
+      try {
+        const first = await (await fetch("/api/performance")).json();
+        if (first?.sheetConfigured) {
+          const res = await fetch("/api/performance", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ sync: true }),
+          });
+          if (res.ok) {
+            const j = await res.json();
+            say(`Auto-synced ${j.imported} rows from the Google Sheet (${j.added} new, ${j.updated} refreshed)`);
+            await load();
+          }
+        }
+      } catch {
+        /* auto-sync is best-effort — the manual button remains */
+      }
     })();
   }, [load]);
-
-  const say = (msg: string) => { setFlash(msg); setError(null); setTimeout(() => setFlash(null), 6000); };
-  const fail = (msg: string) => { setError(msg); setFlash(null); };
 
   const importCsv = useCallback(async (file: File) => {
     setBusy("import");

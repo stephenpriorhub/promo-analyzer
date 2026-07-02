@@ -9,6 +9,7 @@
 
 import Anthropic from "@anthropic-ai/sdk";
 import { getEnv } from "@/lib/env";
+import { EXTRACTION_MODEL } from "@/lib/models";
 import { addLessons, type Lesson, type LessonCategory, type PerformanceTier } from "@/lib/learning-kb";
 
 const EXTRACT_PROMPT = `You are a financial copywriting analyst extracting generalizable lessons from a promo performance training event.
@@ -128,7 +129,7 @@ export async function extractAndStoreLessons(params: ExtractLessonParams): Promi
       .replace("{REASONING}", reasoning?.trim() || "No additional notes.");
 
     const message = await client.messages.create({
-      model: "claude-haiku-4-5-20251001",
+      model: EXTRACTION_MODEL,
       max_tokens: 1024,
       tools: [LESSON_TOOL],
       tool_choice: { type: "tool", name: "record_lessons" },

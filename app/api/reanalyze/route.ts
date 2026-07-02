@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
+import { ANALYSIS_MODEL } from "@/lib/models";
 import fs from "fs";
 import path from "path";
 import { extractFile } from "@/lib/extract-text";
@@ -113,7 +114,13 @@ export async function POST(req: NextRequest) {
   const calibrationBlock = buildCalibrationBlock(trainingExamples, selectionCtx);
   const learningBlock = buildLearningBlock(getAllLessons(), selectionCtx);
 
-  const systemPrompt = SYSTEM_PROMPT + calibrationBlock + learningBlock + directoryBlock + brainContextBlock + directiveBlock + industrySignalsBlock + buildModalityBlock(isTextOnly);
+  // Split so the large stable framework prompt caches (prefix match) while the
+    // per-promo context (calibration ranking, directives, modality) stays after
+    // the breakpoint. Sonnet 5 min cacheable prefix is 2048 tokens - SYSTEM_PROMPT clears it.
+    const systemBlocks: Anthropic.TextBlockParam[] = [
+      { type: "text", text: SYSTEM_PROMPT, cache_control: { type: "ephemeral" } },
+      { type: "text", text: calibrationBlock + learningBlock + directoryBlock + brainContextBlock + directiveBlock + industrySignalsBlock + buildModalityBlock(isTextOnly) },
+    ];
 
   let fkScore: FKScore | null = null;
   if (extracted.type === "text") {
@@ -149,10 +156,9 @@ export async function POST(req: NextRequest) {
 
         if (isPdf && uploadedFileId) {
           anthropicStream = await client.beta.messages.stream({
-            model: "claude-sonnet-4-6",
-            max_tokens: 16000,
-            temperature: 0.2,
-            system: systemPrompt,
+            model: ANALYSIS_MODEL,
+            max_tokens: 32000,
+            system: systemBlocks,
             betas: ["files-api-2025-04-14"],
             messages: [
               {
@@ -170,10 +176,9 @@ export async function POST(req: NextRequest) {
         } else {
           const textContent = extracted.type === "text" ? extracted.content : "";
           anthropicStream = await client.messages.stream({
-            model: "claude-sonnet-4-6",
-            max_tokens: 16000,
-            temperature: 0.2,
-            system: systemPrompt,
+            model: ANALYSIS_MODEL,
+            max_tokens: 32000,
+            system: systemBlocks,
             messages: [
               {
                 role: "user",

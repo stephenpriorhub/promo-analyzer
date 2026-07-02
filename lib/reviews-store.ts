@@ -21,6 +21,7 @@ import type { PromoType } from "./promo-types";
 export { PROMO_TYPES, type PromoType } from "./promo-types";
 import type { SubScore } from "./score";
 import { deriveScore } from "./score";
+import { ANALYSIS_MODEL } from "./models";
 
 export type InputType = "visual-pdf" | "docx" | "text";
 
@@ -54,6 +55,7 @@ export interface SavedReview {
   product?: string | null;   // editable; the promoted product/publication
   effectivenessScore: number | null;
   predictedScore?: number | null; // original copy-derived prediction (calibration baseline; NOT overwritten by training re-evaluation)
+  scoringModel?: string; // which Claude model produced the current scores — calibration must never silently mix models
   subScores?: SubScore[];
   inputType?: InputType;
   fkReadingEase: number | null;
@@ -469,6 +471,7 @@ export function saveReview(
     promoCode: promoCode?.trim() || null,
     effectivenessScore: finalScore,
     predictedScore: finalScore, // calibration baseline — the model's copy-based prediction
+    scoringModel: ANALYSIS_MODEL,
     subScores: subScores.length > 0 ? subScores : undefined,
     inputType,
     fkReadingEase,
@@ -643,6 +646,7 @@ export function updateReviewSections(
   const { subScores, finalScore } = deriveScore(sections.effectiveness);
   reviews[idx].effectivenessScore = finalScore;
   reviews[idx].predictedScore = finalScore; // re-analysis is a fresh copy-based prediction → refresh the calibration baseline
+  reviews[idx].scoringModel = ANALYSIS_MODEL;
   reviews[idx].subScores = subScores.length > 0 ? subScores : undefined;
   // Clear any previously calibrated effectiveness — it was based on the old scoring
   if (reviews[idx].training?.calibratedEffectiveness) {

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { ANALYSIS_MODEL } from "@/lib/models";
 import Anthropic from "@anthropic-ai/sdk";
 import fs from "fs";
 import { getEnv } from "@/lib/env";
@@ -242,7 +243,7 @@ export async function POST(req: NextRequest) {
 
   const client = new Anthropic({ apiKey: getEnv("ANTHROPIC_API_KEY") });
   const message = await client.messages.create({
-    model: "claude-sonnet-4-6",
+    model: ANALYSIS_MODEL,
     max_tokens: 400,
     messages: [{ role: "user", content: prompt }],
   });

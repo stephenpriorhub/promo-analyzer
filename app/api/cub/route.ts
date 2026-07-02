@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
+import { ANALYSIS_MODEL } from "@/lib/models";
 import { extractFile } from "@/lib/extract-text";
 import { CUB_SYSTEM_PROMPT } from "@/lib/build-prompt";
 import { updateReviewCUB } from "@/lib/reviews-store";
@@ -43,8 +44,8 @@ export async function POST(req: NextRequest) {
 
           if (isPdf && uploadedFileId) {
             anthropicStream = await client.beta.messages.stream({
-              model: "claude-sonnet-4-6",
-              max_tokens: 16000,
+              model: ANALYSIS_MODEL,
+              max_tokens: 32000,
               system: CUB_SYSTEM_PROMPT,
               betas: ["files-api-2025-04-14"],
               messages: [
@@ -60,8 +61,8 @@ export async function POST(req: NextRequest) {
           } else {
             const textContent = extracted.type === "text" ? extracted.content : "";
             anthropicStream = await client.messages.stream({
-              model: "claude-sonnet-4-6",
-              max_tokens: 16000,
+              model: ANALYSIS_MODEL,
+              max_tokens: 32000,
               system: CUB_SYSTEM_PROMPT,
               messages: [
                 {

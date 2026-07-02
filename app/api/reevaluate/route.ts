@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
+import { ANALYSIS_MODEL } from "@/lib/models";
 import { getEnv } from "@/lib/env";
 
 export const runtime = "nodejs";
@@ -83,9 +84,8 @@ export async function POST(req: NextRequest) {
     .replace("{ADVERSARIAL_INSTRUCTIONS}", isStrongSignal ? STRONG_SIGNAL_INSTRUCTIONS : STANDARD_INSTRUCTIONS);
 
   const message = await client.messages.create({
-    model: "claude-sonnet-4-6",
-    max_tokens: 1000,
-    temperature: 0.2,
+    model: ANALYSIS_MODEL,
+    max_tokens: 1500,
     messages: [{ role: "user", content: prompt }],
   });
 
