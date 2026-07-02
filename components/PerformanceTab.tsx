@@ -352,7 +352,7 @@ export default function PerformanceTab() {
       )}
 
       <p className="text-[11px] text-gray-400 mt-3">
-        Sortable — click any column header (default: conversion rate, high to low). Tiers rank each promo against the full industry dataset and are recomputed as data arrives (as of {data.asOf.slice(0, 10)}). Teaching the brain merges the real result into the promo&apos;s training data, extracts copy lessons, and appends to the vault&apos;s Performance Ledger.
+        Sortable — click any column header (default: conversion rate, high to low). Tiers rank front-ends by total order volume and backends/mega-bundles by total revenue, each against its own kind across the full dataset (recomputed as data arrives, as of {data.asOf.slice(0, 10)}). Volume and revenue scale with list size, so larger lists rank higher regardless of copy — read tiers as reach-and-results, not copy merit alone. Teaching the brain merges the real result into the promo&apos;s training data, extracts copy lessons, and appends to the vault&apos;s Performance Ledger.
       </p>
     </div>
   );

@@ -32,6 +32,7 @@ interface Predicted {
   n: number;
   neighbors: number;
   confidence: "low" | "medium" | "high";
+  looAccuracy: number;
 }
 
 export default function RealResults({ promoCode, reviewId }: { promoCode: string | null; reviewId?: string | null }) {
@@ -81,7 +82,7 @@ export default function RealResults({ promoCode, reviewId }: { promoCode: string
           <span className="text-xs text-gray-400">({predicted.confidence} confidence)</span>
         </div>
         <p className="text-[11px] text-gray-500 mt-1">
-          Estimated from the real results of the {predicted.neighbors} most copy-similar promos (of {predicted.n} with known outcomes). No real data for this promo yet — set its creative code once it runs to replace this with actuals. Directional only; copy is a minority of what drives performance.
+          Estimated from the real results of the {predicted.neighbors} most copy-similar promos (of {predicted.n} with known outcomes; this method correctly places {Math.round(predicted.looAccuracy * 100)}% in back-testing). No real data for this promo yet — set its creative code once it runs to replace this with actuals. Directional only; copy is a minority of what drives performance.
         </p>
       </div>
     );
@@ -108,6 +109,7 @@ export default function RealResults({ promoCode, reviewId }: { promoCode: string
           </span>
         )}
       </div>
+      {data.tier && <p className="text-[11px] text-gray-500 mt-0.5">{data.tier.line}</p>}
       <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1.5">
         {entries.map(([k, v]) => (
           <div key={k} className="text-xs">

@@ -30,66 +30,6 @@ import {
 } from "./promo-classify";
 import { normalizeCode } from "./promo-stats";
 
-/**
- * Metric whitelist, priority order, all higher-is-better. First hit wins.
- * Lower-is-better columns (CPA, refund rate…) are deliberately absent — adding
- * one requires adding direction handling, not just a pattern.
- */
-const METRIC_PRIORITY: Array<{
-  match: (h: string) => boolean;
-  kind: "rate" | "absolute";
-  /** Sanity range — cells outside it are rejected as mis-parses. */
-  sane?: (v: number) => boolean;
-}> = [
-  { match: (h) => h.includes("conversion") || h === "conv" || h.startsWith("conv%") || h.includes("convrate"), kind: "rate", sane: (v) => v >= 0 && v <= 100 },
-  { match: (h) => h === "epc" || h.includes("earningsperclick"), kind: "rate", sane: (v) => v >= 0 },
-  { match: (h) => h.includes("revenuepername") || h === "rpn" || h.includes("revpername") || h.includes("revenuepersend") || h === "epm", kind: "rate", sane: (v) => v >= 0 },
-  { match: (h) => h.includes("aov") || h.includes("avgorder"), kind: "rate", sane: (v) => v >= 0 },
-  { match: (h) => h.includes("roi"), kind: "rate" },
-  { match: (h) => h.includes("netrevenue") || h.includes("netrev"), kind: "absolute", sane: (v) => v >= 0 },
-  { match: (h) => h.includes("grossrevenue") || h.includes("grossrev") || h.includes("totalrevenue") || h === "revenue", kind: "absolute", sane: (v) => v >= 0 },
-  { match: (h) => h.includes("orders") || h.includes("sales"), kind: "absolute", sane: (v) => v >= 0 },
-];
-
-function normHeader(h: string): string {
-  return h.trim().toLowerCase().replace(/[\s_%()-]+/g, "");
-}
-
-/**
- * Headers that must never drive a tier even when they substring-match a
- * whitelisted pattern — lower-is-better columns ("Conversion Cost", "Refund
- * Orders", CPA…) would rank the worst promos as winners.
- */
-function isDisqualifiedHeader(h: string): boolean {
-  return /cost|refund|cancel|cpa|spend|chargeback|unsub/.test(h);
-}
-
-/** Parse "$1,234.56", "3.2%", "1,204" → number. Null for non-numeric. */
-export function parseStatNumber(raw: string | undefined): number | null {
-  if (!raw) return null;
-  const cleaned = raw.replace(/[$,%\s]/g, "");
-  if (!cleaned) return null;
-  const n = Number(cleaned);
-  return Number.isFinite(n) ? n : null;
-}
-
-/** Pick the tiering metric for a record: explicit override (must still be whitelisted), else priority scan. */
-export function detectPrimaryMetric(rec: PerformanceRecord): { metric: string; kind: "rate" | "absolute" } | null {
-  const candidates = rec.primaryMetricOverride
-    ? [rec.primaryMetricOverride, ...Object.keys(rec.stats)]
-    : Object.keys(rec.stats);
-  for (const pri of METRIC_PRIORITY) {
-    const hit = candidates.find((h) => {
-      const n = normHeader(h);
-      if (isDisqualifiedHeader(n) || !pri.match(n)) return false;
-      const v = parseStatNumber(rec.stats[h]);
-      return v != null && (pri.sane ? pri.sane(v) : true);
-    });
-    if (hit) return { metric: hit, kind: pri.kind };
-  }
-  return null;
-}
-
 /** Full 5-tier scheme needs real deciles. */
 export const FULL_TIER_POOL = 20;
 /** Below this, no tier at all — "insufficient comparables". */
@@ -195,7 +135,7 @@ export function deriveTiers(
       out.set(v.rec.promoCode, {
         promoCode: v.rec.promoCode,
         metric: v.metric,
-        metricKind: bucket === "acquisition" ? "absolute" : "absolute",
+        metricKind: "absolute", // both order counts and revenue are absolute totals
         value: v.value,
         percentile: Math.round(percentile * 1000) / 1000,
         performanceScore,

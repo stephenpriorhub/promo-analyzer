@@ -81,9 +81,18 @@ export const BUCKET_METRIC: Record<PerfBucket, { label: string; kind: "orders" |
   monetization: { label: "revenue", kind: "revenue" },
 };
 
+/**
+ * Lower-is-better / cost columns must never be picked as a higher-is-better
+ * ranking metric — otherwise the promo with the most refunds tiers as the
+ * winner. Guards both finders below.
+ */
+function isCostColumn(h: string): boolean {
+  return /cost|refund|cancel|charge\s*back|chargeback|unsub|return|decline|cpa|spend/i.test(h);
+}
+
 /** Find the orders column (a count column named orders/sales) in a stat row. */
 export function findOrdersColumn(stats: Record<string, string>): string | null {
-  const keys = Object.keys(stats);
+  const keys = Object.keys(stats).filter((h) => !isCostColumn(h));
   return (
     keys.find((h) => /gross\s*orders?/i.test(h)) ??
     keys.find((h) => classifyStatColumn(h) === "number" && /orders?\b/i.test(h)) ??
@@ -94,7 +103,7 @@ export function findOrdersColumn(stats: Record<string, string>): string | null {
 
 /** Find the revenue column (prefer gross/total revenue) in a stat row. */
 export function findRevenueColumn(stats: Record<string, string>): string | null {
-  const keys = Object.keys(stats);
+  const keys = Object.keys(stats).filter((h) => !isCostColumn(h));
   return (
     keys.find((h) => /gross\s*revenue|total\s*revenue/i.test(h)) ??
     keys.find((h) => classifyStatColumn(h) === "currency" && /revenue/i.test(h)) ??

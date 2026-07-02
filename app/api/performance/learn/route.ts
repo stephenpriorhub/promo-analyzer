@@ -99,7 +99,13 @@ export async function POST(req: NextRequest) {
     if (!d) { skippedNoTier++; continue; }
 
     const reviewName = review.displayName ?? review.filename.replace(/\.[^.]+$/, "");
-    const autoReason = `Real result (${rec.promoCode}): ${describeDerivation(d)} → tier ${d.tier}. Raw stats — ${statsSummary(rec)}.${rec.notes ? ` Publisher notes: ${rec.notes}` : ""}`;
+    // Audit trail: if a publisher-entered score is about to be overwritten by
+    // data, record what it was so the override is visible and recoverable.
+    const overwrote =
+      review.training?.performanceScore != null && review.training.source !== "learned"
+        ? ` (auto-set from data; publisher had entered ${review.training.performanceScore}/10)`
+        : "";
+    const autoReason = `Real result (${rec.promoCode}): ${describeDerivation(d)} → tier ${d.tier} = ${d.performanceScore}/10${overwrote}. Raw stats — ${statsSummary(rec)}.${rec.notes ? ` Publisher notes: ${rec.notes}` : ""}`;
 
     // Publisher rule: real data always drives the performance score. Because
     // this promo HAS data (it matched + tiered), the data-derived score wins —

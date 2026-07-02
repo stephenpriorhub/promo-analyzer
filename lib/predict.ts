@@ -178,14 +178,20 @@ export interface PredictedPerformance {
   n: number;              // comparable promos (with real results) used
   neighbors: number;      // how many nearest comparables informed it
   confidence: "low" | "medium" | "high";
+  looAccuracy: number;    // validated leave-one-out band accuracy (0..1) on this dataset
 }
 
 /**
  * Predict a 1–10 real-world performance score for a promo that has NO real
- * data, from the real outcomes of the most copy-similar promos that DO. The
- * neighbors are chosen by 8-dimension copy-craft similarity, so the estimate is
- * "promos whose copy looks like this one scored X in the real world." Returns
- * null until there are enough real-outcome comparables to be meaningful.
+ * data, from the real outcomes of the most copy-similar promos that DO.
+ *
+ * Held to the same bar the codebase documents for predictions (Claims Integrity
+ * 2026-07-02): a numeric prediction is emitted ONLY when there are ≥30
+ * real-outcome pairs AND the method's leave-one-out band accuracy beats the
+ * naive base rate (guessing the modal band). Below that bar we return null —
+ * better no number than an unearned one. Neighbors are chosen by 8-dimension
+ * copy-craft similarity, so the estimate reads "promos whose copy looks like
+ * this scored X in the real world."
  */
 export function predictPerformanceScore(review: SavedReview): PredictedPerformance | null {
   const vector = toVector(review.subScores);
@@ -195,7 +201,10 @@ export function predictPerformanceScore(review: SavedReview): PredictedPerforman
     .filter((r) => r.id !== review.id)
     .map(toPair)
     .filter((p): p is TrainingPair => p !== null);
-  if (pairs.length < MIN_COMPARABLES) return null;
+  // Hard floor: enough data, and the method must beat guessing on this data.
+  if (pairs.length < MIN_PREDICTION_PAIRS) return null;
+  const { accuracy, baseRate } = leaveOneOutAccuracy(pairs);
+  if (accuracy <= baseRate) return null;
 
   const subject = {
     vector,
@@ -216,9 +225,12 @@ export function predictPerformanceScore(review: SavedReview): PredictedPerforman
     vsum += w * nb.performanceScore;
   }
   const score = Math.round((vsum / wsum) * 10) / 10;
-  const confidence = pairs.length >= MIN_PREDICTION_PAIRS && nbs.length >= 5 ? "high"
-    : nbs.length >= 4 ? "medium" : "low";
-  return { score, n: pairs.length, neighbors: nbs.length, confidence };
+  // Confidence keys off how *close* the neighbors are, not just how many —
+  // 5 neighbors is the cap, so count alone can't earn "high".
+  const meanDist = nbs.reduce((a, nb) => a + nb.distance, 0) / nbs.length;
+  const confidence = nbs.length >= 5 && meanDist < 1.5 ? "high"
+    : nbs.length >= 4 && meanDist < 2.2 ? "medium" : "low";
+  return { score, n: pairs.length, neighbors: nbs.length, confidence, looAccuracy: Math.round(accuracy * 100) / 100 };
 }
 
 export function computeOutlook(review: SavedReview): OutlookResult {
