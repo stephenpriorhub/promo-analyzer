@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import fs from "fs";
 import path from "path";
 import { FILES_DIR, getReviewById, removeSupplementalFile } from "@/lib/reviews-store";
+import { getHubUser, canModifyReview, forbidden } from "@/lib/hub-auth";
 
 export const runtime = "nodejs";
 
@@ -48,10 +49,12 @@ export async function GET(
 
 /** DELETE — remove a supplemental file */
 export async function DELETE(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ reviewId: string; fileId: string }> }
 ) {
   const { reviewId, fileId } = await params;
+  const review = getReviewById(reviewId);
+  if (review && !canModifyReview(await getHubUser(req), review)) return forbidden();
   const removed = removeSupplementalFile(reviewId, fileId);
   if (!removed) {
     return NextResponse.json({ error: "File not found" }, { status: 404 });

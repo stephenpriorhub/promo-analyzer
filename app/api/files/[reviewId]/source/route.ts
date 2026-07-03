@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import fs from "fs";
 import path from "path";
 import { FILES_DIR, getReviewById, updateSourceFileMeta } from "@/lib/reviews-store";
+import { getHubUser, canModifyReview, forbidden } from "@/lib/hub-auth";
 
 export const runtime = "nodejs";
 
@@ -17,6 +18,9 @@ export async function POST(
   if (!review) {
     return NextResponse.json({ error: "Review not found" }, { status: 404 });
   }
+  // Replacing the source document rewrites what future re-analyses see —
+  // admin-or-uploader only.
+  if (!canModifyReview(await getHubUser(req), review)) return forbidden();
 
   const formData = await req.formData();
   const file = formData.get("file") as File | null;

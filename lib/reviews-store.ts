@@ -77,6 +77,8 @@ export interface SavedReview {
   promoStatus?: PromoStatus | null; // Active / Old (Inactive) / Draft (Untested)
   hasPerformanceData?: boolean;     // TRANSIENT — computed in GET (creative code matches a performance record); never persisted
   pricePoint?: number | null;       // headline price parsed from the offer (drives the type rule)
+  /** Who uploaded/analyzed this promo (hub user). Missing on legacy promos → admin-only edits. */
+  uploadedBy?: { id: string; email: string; name?: string | null } | null;
   publisher?: string | null; // editable; auto-seeded from detection, user-correctable
   gurus?: string[];          // editable; editors/strategists only (hosts excluded)
   product?: string | null;   // editable; the promoted product/publication
@@ -549,6 +551,19 @@ export function updateReviewCUB(id: string, cub: string): boolean {
   const idx = reviews.findIndex((r) => r.id === id);
   if (idx === -1) return false;
   reviews[idx].sections.cub = cub;
+  writeReviews(reviews);
+  return true;
+}
+
+/** Stamp who uploaded/analyzed a promo (set once at analyze time). */
+export function stampUploader(
+  reviewId: string,
+  user: { id: string; email: string; name?: string | null }
+): boolean {
+  const reviews = readReviews();
+  const idx = reviews.findIndex((r) => r.id === reviewId);
+  if (idx === -1) return false;
+  reviews[idx].uploadedBy = { id: user.id, email: user.email, name: user.name ?? null };
   writeReviews(reviews);
   return true;
 }

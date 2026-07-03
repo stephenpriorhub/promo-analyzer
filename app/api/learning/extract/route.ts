@@ -7,11 +7,15 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { extractAndStoreLessons } from "@/lib/extract-lessons";
+import { getHubUser, forbidden } from "@/lib/hub-auth";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
 export async function POST(req: NextRequest) {
+  // Appends to the shared learning KB — signed-in hub users only (the primary
+  // extraction path is in-process; this compat route shouldn't accept anonymous writes).
+  if (!(await getHubUser(req))) return forbidden("Sign in to OxfordHub to add lessons.");
   const body = await req.json();
   const result = await extractAndStoreLessons(body);
   return NextResponse.json(result);

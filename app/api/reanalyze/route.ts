@@ -17,6 +17,7 @@ import {
 import { getAllLessons, buildLearningBlock } from "@/lib/learning-kb";
 import { loadBrainContext, buildBrainContextBlock, loadPublishingDirectory, buildDirectoryBlock, matchDirectoryEntities, buildDirectiveBlock, loadMarketIntelligence, buildIndustrySignalsBlock, detectGuru, detectPublisher } from "@/lib/brain-reader";
 import { getEnv } from "@/lib/env";
+import { getHubUser, canModifyReview, forbidden } from "@/lib/hub-auth";
 
 export const runtime = "nodejs";
 export const maxDuration = 90; // lowered from 180 to shrink the concurrent-request window (memory pressure / OOM mitigation)
@@ -50,6 +51,8 @@ export async function POST(req: NextRequest) {
   if (!review) {
     return NextResponse.json({ error: "Review not found" }, { status: 404 });
   }
+  // Re-analysis rewrites the promo's scores — admin-or-uploader only.
+  if (!canModifyReview(await getHubUser(req), review)) return forbidden();
 
   // Find source file on disk
   const fileDir = path.join(FILES_DIR, reviewId);

@@ -6,7 +6,8 @@ import path from "path";
 import { extractFile } from "@/lib/extract-text";
 import { calculateFKScore, type FKScore } from "@/lib/fk-score";
 import { SYSTEM_PROMPT, buildCalibrationBlock, buildModalityBlock } from "@/lib/build-prompt";
-import { saveReview, getTrainingExamples, updateSourceFileMeta, FILES_DIR, type AnalysisSections } from "@/lib/reviews-store";
+import { saveReview, getTrainingExamples, updateSourceFileMeta, stampUploader, FILES_DIR, type AnalysisSections } from "@/lib/reviews-store";
+import { getHubUser } from "@/lib/hub-auth";
 import { getAllLessons, buildLearningBlock } from "@/lib/learning-kb";
 import { loadBrainContext, buildBrainContextBlock, loadPublishingDirectory, buildDirectoryBlock, matchDirectoryEntities, buildDirectiveBlock, loadMarketIntelligence, buildIndustrySignalsBlock, detectGuru, detectPublisher } from "@/lib/brain-reader";
 import { parsePromoIntel, buildIntelNote, intelNoteTitle } from "@/lib/promo-intel";
@@ -43,6 +44,10 @@ export async function POST(req: NextRequest) {
   // we can target the most relevant examples/lessons (reduces prompt bloat).
   const trainingExamples = getTrainingExamples();
   const lessons = getAllLessons();
+
+  // Attribution: resolve the hub user up front (cookie forwarded to the hub).
+  // Null (bulk scripts, hub outage) just leaves the promo unowned — admin-only edits.
+  const hubUser = await getHubUser(req);
 
   try {
     const formData = await req.formData();
@@ -202,6 +207,8 @@ export async function POST(req: NextRequest) {
             inputType,
             promoCode
           );
+
+          if (hubUser) stampUploader(saved.id, hubUser);
 
           // Save original source file to disk
           try {

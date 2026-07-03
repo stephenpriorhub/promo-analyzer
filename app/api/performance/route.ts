@@ -20,6 +20,7 @@ import {
 import { deriveTiers, type TierDerivation } from "@/lib/performance-tier";
 import { fetchAllSheetStats, getSheetLoadError, getSheetLoadStats, isPromoStatsConfigured, normalizeCode } from "@/lib/promo-stats";
 import { getAllReviews, updateReviewPromoCode, stampLabelSnapshot } from "@/lib/reviews-store";
+import { getHubUser, isHubAdmin, forbidden } from "@/lib/hub-auth";
 import { classifyStatColumn, normalizedStatNumber } from "@/lib/stat-format";
 import { predictAllPerformanceScores } from "@/lib/predict";
 
@@ -185,6 +186,9 @@ export async function POST(req: NextRequest) {
   const body = (await req.json().catch(() => ({}))) as { csv?: string; sync?: boolean };
 
   if (body.csv) {
+    // Manual bulk import of shared industry data — admin-only. (Sheet sync below
+    // stays open: it's the automatic pipeline, idempotent, reads the configured sheet.)
+    if (!isHubAdmin(await getHubUser(req))) return forbidden("Only OxfordHub Admins can import performance CSVs.");
     const { rows, error } = parsePerformanceCsv(body.csv);
     if (error) return NextResponse.json({ error }, { status: 400 });
     const result = upsertPerformanceRecords(rows, "csv");
@@ -215,6 +219,9 @@ export async function POST(req: NextRequest) {
 const VALID_TIERS = new Set(["gold_standard", "strong", "average", "weak", "failed"]);
 
 export async function PATCH(req: NextRequest) {
+  // Performance records are shared industry data (tier overrides, code links) —
+  // hub admins only. Per-promo edits by uploaders go through /api/reviews.
+  if (!isHubAdmin(await getHubUser(req))) return forbidden("Only OxfordHub Admins can edit performance records.");
   const body = (await req.json().catch(() => ({}))) as
     | (PerformanceEnrichment & { promoCode?: string; linkReviewId?: string | null })
     | Record<string, never>;
