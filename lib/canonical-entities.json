@@ -209,58 +209,202 @@
     "true wealth": "Stansberry Research",
     "unbound": "Monument Traders Alliance"
   },
-  "publicationGuru": {
-    "the war room": "Bryan Bottarelli",
-    "post-market profits": "Bryan Bottarelli",
-    "profitsight": "Bryan Bottarelli",
-    "monument trend advisory": "Bryan Bottarelli",
-    "trade of the day plus": "Bryan Bottarelli",
-    "catalyst cashouts live": "Bryan Bottarelli",
-    "unbound": "Karim Rahemtulla",
-    "profit surge trader": "Nate Bear",
-    "daily profits live": "Nate Bear",
-    "daily profit scanner": "Nate Bear",
-    "nate bear signals": "Nate Bear",
-    "mta live": "Chris Johnson",
-    "the oxford communiqué": "Alexander Green",
-    "marc lichtenfeld]]": "Marc Lichtenfeld - Oxford Club\\",
-    "forecasts & strategies": "Dr. Mark Skousen",
-    "the skousen report": "Dr. Mark Skousen",
-    "paradigm mastermind": "Enrique Abeyta",
-    "the omen": "JC Parets",
-    "altucher's investment network": "James Altucher",
-    "strategic intelligence / strategic intelligence pro": "Jim Rickards",
-    "catalyst trader": "Ray Blanco",
-    "the paradigm letter": "Matt Insley",
-    "strategic fortunes": "Ian King",
-    "infinite momentum alert": "Adam O'Dell",
-    "gray swan investment fraternity": "Addison Wiggin",
-    "money calendar / quantum scripts": "Tom Gentile",
-    "flash point trader": "Garrett Baldwin",
-    "trader's action zone": "Rob Booker",
-    "jeff clark trader / delta report": "Jeff Clark",
-    "ev blueprint": "Nomi Prins",
-    "palm beach letter / crypto letter": "Teeka Tiwari",
-    "the big secret on wall street": "Porter Stansberry",
-    "investment report": "Eric Fry",
-    "america's #1 stock picker": "Matt McCall",
-    "innovation investor": "Luke Lango",
-    "near future report / early stage trader": "Jeff Brown",
-    "[[opportunistic trader]]": "Larry Benedict",
-    "millionaire challenge / weekend profits": "Tim Sykes",
-    "operation master calendar": "Ben Sturgill",
-    "bonner private research": "Bill Bonner",
-    "safe money report / weiss ratings": "Martin Weiss",
-    "beyond the mainstream": "Dylan Jovine",
-    "true wealth": "Steve Sjuggerud",
-    "retirement millionaire": "Dr. David Eifrig",
-    "stt advisory / project x": "Eric Bohen",
-    "manward money report": "Shah Gilani",
-    "oxford wealth alliance": "Alexander Green",
-    "monster ai": "Jon Najarian",
-    "money and power": "Buck Sexton",
-    "income alliance": "Zach Scheidt",
-    "trade of the day plus (monument trend advisory); bryan bottarelli": "The Skousen Report row upgraded Confidence inferred → **confirmed** — Stephen confirmed Skousen is part of The Oxford Club (resolves the flag raised in the earlier 2026-07-02 Oxford Club correction; matches his already-confirmed Forecasts",
-    "old → new): alexander green": "publication"
+  "publicationGurus": {
+    "the war room": [
+      "Bryan Bottarelli",
+      "Karim Rahemtulla"
+    ],
+    "post-market profits": [
+      "Bryan Bottarelli"
+    ],
+    "profitsight": [
+      "Bryan Bottarelli"
+    ],
+    "monument trend advisory": [
+      "Bryan Bottarelli",
+      "Karim Rahemtulla"
+    ],
+    "trade of the day plus": [
+      "Bryan Bottarelli",
+      "Karim Rahemtulla"
+    ],
+    "catalyst cashouts live": [
+      "Bryan Bottarelli",
+      "Karim Rahemtulla"
+    ],
+    "unbound": [
+      "Karim Rahemtulla"
+    ],
+    "profit surge trader": [
+      "Nate Bear"
+    ],
+    "daily profits live": [
+      "Nate Bear"
+    ],
+    "daily profit scanner": [
+      "Nate Bear"
+    ],
+    "nate bear signals": [
+      "Nate Bear"
+    ],
+    "mta live": [
+      "Chris Johnson"
+    ],
+    "the oxford communiqué": [
+      "Alexander Green"
+    ],
+    "marc lichtenfeld]]": [
+      "Marc Lichtenfeld - Oxford Club\\"
+    ],
+    "forecasts & strategies": [
+      "Dr. Mark Skousen"
+    ],
+    "the skousen report": [
+      "Dr. Mark Skousen"
+    ],
+    "paradigm mastermind": [
+      "Enrique Abeyta"
+    ],
+    "the omen": [
+      "JC Parets"
+    ],
+    "altucher's investment network": [
+      "James Altucher"
+    ],
+    "strategic intelligence / strategic intelligence pro": [
+      "Jim Rickards"
+    ],
+    "catalyst trader": [
+      "Ray Blanco"
+    ],
+    "the paradigm letter": [
+      "Matt Insley"
+    ],
+    "strategic fortunes": [
+      "Ian King"
+    ],
+    "infinite momentum alert": [
+      "Adam O'Dell"
+    ],
+    "gray swan investment fraternity": [
+      "Addison Wiggin"
+    ],
+    "money calendar / quantum scripts": [
+      "Tom Gentile"
+    ],
+    "flash point trader": [
+      "Garrett Baldwin"
+    ],
+    "trader's action zone": [
+      "Rob Booker"
+    ],
+    "jeff clark trader / delta report": [
+      "Jeff Clark"
+    ],
+    "ev blueprint": [
+      "Nomi Prins"
+    ],
+    "palm beach letter / crypto letter": [
+      "Teeka Tiwari"
+    ],
+    "the big secret on wall street": [
+      "Porter Stansberry"
+    ],
+    "investment report": [
+      "Eric Fry"
+    ],
+    "america's #1 stock picker": [
+      "Matt McCall"
+    ],
+    "innovation investor": [
+      "Luke Lango"
+    ],
+    "near future report / early stage trader": [
+      "Jeff Brown"
+    ],
+    "[[opportunistic trader]]": [
+      "Larry Benedict"
+    ],
+    "millionaire challenge / weekend profits": [
+      "Tim Sykes"
+    ],
+    "operation master calendar": [
+      "Ben Sturgill"
+    ],
+    "bonner private research": [
+      "Bill Bonner"
+    ],
+    "safe money report / weiss ratings": [
+      "Martin Weiss"
+    ],
+    "beyond the mainstream": [
+      "Dylan Jovine"
+    ],
+    "true wealth": [
+      "Steve Sjuggerud",
+      "Brett Eversol"
+    ],
+    "retirement millionaire": [
+      "Dr. David Eifrig"
+    ],
+    "stt advisory / project x": [
+      "Eric Bohen"
+    ],
+    "manward money report": [
+      "Shah Gilani"
+    ],
+    "oxford wealth alliance": [
+      "Alexander Green",
+      "Marc Lichtenfeld"
+    ],
+    "monster ai": [
+      "Jon Najarian"
+    ],
+    "money and power": [
+      "Buck Sexton"
+    ],
+    "income alliance": [
+      "Zach Scheidt"
+    ],
+    "altucher confidential": [
+      "James Altucher"
+    ],
+    "the situation report": [
+      "Jim Rickards"
+    ],
+    "the bleeding edge": [
+      "Jeff Brown"
+    ],
+    "dailywealth": [
+      "Steve Sjuggerud"
+    ],
+    "liberty through wealth": [
+      "Alexander Green"
+    ],
+    "wealthy retirement": [
+      "Marc Lichtenfeld"
+    ],
+    "hypergrowth investing": [
+      "Luke Lango"
+    ],
+    "smart money": [
+      "Eric Fry"
+    ],
+    "market 360": [
+      "Louis Navellier"
+    ],
+    "masters in trading": [
+      "Jonathan Rose"
+    ],
+    "the situation report (paradigm — appears as a real 1-review product in the analyzer graph); jeff brown": [
+      "Altucher Confidential (Paradigm); Jim Rickards"
+    ],
+    "trade of the day plus (monument trend advisory); bryan bottarelli": [
+      "The Skousen Report row upgraded Confidence inferred → **confirmed** — Stephen confirmed Skousen is part of The Oxford Club (resolves the flag raised in the earlier 2026-07-02 Oxford Club correction; matches his already-confirmed Forecasts",
+      "Strategies row). (2) **Monument Trend Advisory (TPU) former-name aliases added.** TPU was formerly named \"Trade of the Day Plus\" (first) and then \"Catalyst Cashouts Live\" — SAME product, parent **Monument Traders Alliance**. Added 4 alias rows (2 gurus × 2 former names) so the Promo Analyzer parser attributes promos whose product is \"Trade of the Day Plus\" or \"Catalyst Cashouts Live\" to Monument Traders Alliance — NOT to whichever guru appears in the copy: Bryan Bottarelli"
+    ],
+    "old → new): alexander green": [
+      "publication"
+    ]
   }
 }

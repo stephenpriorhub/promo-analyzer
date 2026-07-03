@@ -27,7 +27,7 @@ import {
   addAlias,
   setGuruPublisher,
   setProductPublisher,
-  setProductGuru,
+  setProductGurus,
   setPubCode,
   removeEntity,
   restoreEntity,
@@ -47,8 +47,10 @@ interface ProductEntry {
   name: string;
   pubCode: string;
   reviewCount: number;
-  /** Guru this product is assigned to ("" when none). Manual assignment beats the directory. */
-  guru: string;
+  /** Gurus on this product — products can have several (e.g. The War Room:
+   * Bryan + Karim; publisher direction 2026-07-03). A manual assignment
+   * replaces every derived guru. */
+  gurus: string[];
 }
 interface GuruEntry {
   name: string;
@@ -72,18 +74,26 @@ async function buildGraph(): Promise<{ publishers: PublisherGroup[]; unassigned:
 
   // guru → publisher and product → publisher: snapshot seeds (works offline /
   // when the live directory fetch fails), live directory rows override.
-  // product → guru comes from the same directory rows; manual assignment wins.
+  // product → gurus (plural) comes from the same sources; a manual assignment
+  // REPLACES the derived set.
   const guruPub = new Map<string, string>();
   const productPub = new Map<string, string>();
-  const productGuru = new Map<string, string>();
+  const productGurus = new Map<string, Set<string>>();
+  const addProductGuru = (pk: string, guru: string) => {
+    const set = productGurus.get(pk) ?? new Set<string>();
+    set.add(guru);
+    productGurus.set(pk, set);
+  };
   const snap = canonicalSnapshot as {
     guruPublisher?: Record<string, string>;
     publicationPublisher?: Record<string, string>;
-    publicationGuru?: Record<string, string>;
+    publicationGurus?: Record<string, string[]>;
   };
   for (const [g, pub] of Object.entries(snap.guruPublisher ?? {})) guruPub.set(normKey(g), canonPublisher(pub));
   for (const [p, pub] of Object.entries(snap.publicationPublisher ?? {})) productPub.set(normKey(p), canonPublisher(pub));
-  for (const [p, g] of Object.entries(snap.publicationGuru ?? {})) productGuru.set(normKey(p), canonGuru(g));
+  for (const [p, gs] of Object.entries(snap.publicationGurus ?? {})) {
+    for (const g of gs) addProductGuru(normKey(p), canonGuru(g));
+  }
   const rows = parseDirectory(await loadPublishingDirectory());
   for (const r of rows) {
     const parent = canonPublisher(stripProductCode(r.parent));
@@ -100,7 +110,7 @@ async function buildGraph(): Promise<{ publishers: PublisherGroup[]; unassigned:
       const p = canonProduct(r.publication);
       if (p) {
         productPub.set(normKey(p), parent);
-        if (rowGurus[0]) productGuru.set(normKey(p), rowGurus[0]);
+        for (const g of rowGurus) addProductGuru(normKey(p), g);
       }
     }
   }
@@ -108,32 +118,25 @@ async function buildGraph(): Promise<{ publishers: PublisherGroup[]; unassigned:
   const canon = await getCanonicalEntities();
   const reviews = getAllReviews();
 
-  // Review co-occurrence beats the directory seed: what Stephen entered on
-  // analyzed promos (product + gurus) IS the matching — each review is a vote,
-  // the most frequent guru wins the product.
-  const guruVotes = new Map<string, Map<string, { name: string; n: number }>>();
+  // Review co-occurrence adds to the directory seed: what Stephen entered on
+  // analyzed promos (product + gurus) IS the matching — products can carry
+  // multiple gurus, so every guru he tagged joins the product's set.
   for (const r of reviews) {
     if (!r.product || !(r.gurus ?? []).length) continue;
     const pk = normKey(canonProduct(r.product));
-    const votes = guruVotes.get(pk) ?? new Map();
     for (const g0 of r.gurus ?? []) {
       const g = canonGuru(g0);
-      if (!g || g.startsWith("(")) continue;
-      const v = votes.get(normKey(g)) ?? { name: g, n: 0 };
-      v.n += 1;
-      votes.set(normKey(g), v);
+      if (g && !g.startsWith("(")) addProductGuru(pk, g);
     }
-    guruVotes.set(pk, votes);
-  }
-  for (const [pk, votes] of guruVotes) {
-    const top = [...votes.values()].sort((a, b) => b.n - a.n || a.name.localeCompare(b.name))[0];
-    if (top) productGuru.set(pk, top.name);
   }
 
-  // Manual assignments override everything
+  // Manual assignments override everything; a productGurus key REPLACES the
+  // whole derived set (empty list = explicitly none).
   for (const [g, pub] of Object.entries(o.guruPublisher)) guruPub.set(g, canonPublisher(pub));
   for (const [p, pub] of Object.entries(o.productPublisher)) productPub.set(p, canonPublisher(pub));
-  for (const [p, g] of Object.entries(o.productGuru)) productGuru.set(p, canonGuru(g));
+  for (const [p, gs] of Object.entries(o.productGurus)) {
+    productGurus.set(p, new Set(gs.map((g) => canonGuru(g)).filter((g) => g && !g.startsWith("("))));
+  }
   const guruNames = new Map<string, string>(); // normKey → display
   const productNames = new Map<string, string>();
   const publisherNames = new Map<string, string>();
@@ -188,12 +191,12 @@ async function buildGraph(): Promise<{ publishers: PublisherGroup[]; unassigned:
     else unassigned.gurus.push(entry);
   }
   for (const [k, name] of productNames) {
-    const g = productGuru.get(k);
+    const gs = [...(productGurus.get(k) ?? [])].filter((g) => !isRemoved("gurus", g)).sort();
     const entry: ProductEntry = {
       name,
       pubCode: o.pubCodes[k] ?? "",
       reviewCount: productCount.get(k) ?? 0,
-      guru: g && !isRemoved("gurus", g) ? g : "",
+      gurus: gs,
     };
     const pub = productPub.get(k);
     if (pub && !isRemoved("publishers", pub)) groupFor(pub).products.push(entry);
@@ -274,10 +277,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true });
   }
 
-  if (body.action === "assignGuru") {
-    const { product, guru } = body as { product?: string; guru?: string };
-    if (!product?.trim()) return NextResponse.json({ error: "product required" }, { status: 400 });
-    setProductGuru(product.trim(), guru?.trim() || null);
+  if (body.action === "setProductGurus") {
+    const { product, gurus } = body as { product?: string; gurus?: unknown };
+    if (!product?.trim() || !Array.isArray(gurus) || gurus.some((g) => typeof g !== "string")) {
+      return NextResponse.json({ error: "product and gurus[] required" }, { status: 400 });
+    }
+    setProductGurus(product.trim(), gurus as string[]);
     void writeBrainNote("Entity Merges", buildMergeNote(), "promo-analysis-tool");
     return NextResponse.json({ ok: true });
   }
@@ -323,8 +328,8 @@ function buildMergeNote(): string {
   lines.push("", "## Manual publisher assignments");
   for (const [g, p] of Object.entries(o.guruPublisher)) lines.push(`- guru "${g}" → **${p}**`);
   for (const [pr, p] of Object.entries(o.productPublisher)) lines.push(`- product "${pr}" → **${p}**`);
-  lines.push("", "## Product → guru assignments");
-  for (const [pr, g] of Object.entries(o.productGuru)) lines.push(`- product "${pr}" → **${g}**`);
+  lines.push("", "## Product → guru assignments (products can have multiple gurus)");
+  for (const [pr, gs] of Object.entries(o.productGurus)) lines.push(`- product "${pr}" → **${gs.join(", ") || "(none)"}**`);
   lines.push("", "## Removed from directory (reviews keep their data)");
   for (const [kind, names] of Object.entries(o.removed)) {
     for (const n of names) lines.push(`- ${kind.replace(/s$/, "")}: "${n}"`);

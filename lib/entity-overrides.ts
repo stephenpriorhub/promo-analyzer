@@ -10,7 +10,9 @@
  *   aliases.publishers: old name     -> canonical name
  *   guruPublisher:      "alexander green" -> "The Oxford Club"   (reassignment)
  *   productPublisher:   normalized product -> publisher           (reassignment)
- *   productGuru:        normalized product -> guru display name   (assignment)
+ *   productGurus:       normalized product -> guru display names  (products can
+ *                       have MULTIPLE gurus — publisher direction 2026-07-03;
+ *                       a present key REPLACES all derived gurus, empty = none)
  *   pubCodes:           normalized product -> Agora pub code
  *   removed:            entities hidden from the directory (noise/defunct);
  *                       reviews keep their data — removal only hides the entry
@@ -30,7 +32,7 @@ export interface EntityOverrides {
   aliases: { gurus: Record<string, string>; products: Record<string, string>; publishers: Record<string, string> };
   guruPublisher: Record<string, string>;
   productPublisher: Record<string, string>;
-  productGuru: Record<string, string>;
+  productGurus: Record<string, string[]>;
   pubCodes: Record<string, string>;
   removed: { gurus: string[]; products: string[]; publishers: string[] };
 }
@@ -39,7 +41,7 @@ const EMPTY: EntityOverrides = {
   aliases: { gurus: {}, products: {}, publishers: {} },
   guruPublisher: {},
   productPublisher: {},
-  productGuru: {},
+  productGurus: {},
   pubCodes: {},
   removed: { gurus: [], products: [], publishers: [] },
 };
@@ -60,7 +62,14 @@ export function readOverrides(): EntityOverrides {
       },
       guruPublisher: raw.guruPublisher ?? {},
       productPublisher: raw.productPublisher ?? {},
-      productGuru: raw.productGuru ?? {},
+      // Migration: the earlier single-guru map becomes 1-element lists.
+      productGurus:
+        raw.productGurus ??
+        Object.fromEntries(
+          Object.entries((raw as { productGuru?: Record<string, string> }).productGuru ?? {}).map(
+            ([p, g]) => [p, [g]]
+          )
+        ),
       pubCodes: raw.pubCodes ?? {},
       removed: {
         gurus: raw.removed?.gurus ?? [],
@@ -117,10 +126,15 @@ export function setProductPublisher(product: string, publisher: string | null): 
   return o;
 }
 
-export function setProductGuru(product: string, guru: string | null): EntityOverrides {
+/**
+ * Set a product's FULL guru list. A present key replaces every derived guru
+ * (directory + review votes); an empty array means "explicitly none"; pass
+ * null to delete the override and fall back to derivation.
+ */
+export function setProductGurus(product: string, gurus: string[] | null): EntityOverrides {
   const o = readOverrides();
-  if (guru) o.productGuru[normKey(product)] = guru;
-  else delete o.productGuru[normKey(product)];
+  if (gurus) o.productGurus[normKey(product)] = [...new Set(gurus.map((g) => g.trim()).filter(Boolean))];
+  else delete o.productGurus[normKey(product)];
   writeOverrides(o);
   return o;
 }
@@ -137,11 +151,14 @@ export function removeEntity(kind: EntityKind, name: string): EntityOverrides {
   if (!list.includes(k)) list.push(k);
   if (kind === "guru") {
     delete o.guruPublisher[k];
-    for (const [p, g] of Object.entries(o.productGuru)) if (normKey(g) === k) delete o.productGuru[p];
+    for (const [p, gs] of Object.entries(o.productGurus)) {
+      const kept = gs.filter((g) => normKey(g) !== k);
+      if (kept.length !== gs.length) o.productGurus[p] = kept;
+    }
   }
   if (kind === "product") {
     delete o.productPublisher[k];
-    delete o.productGuru[k];
+    delete o.productGurus[k];
     delete o.pubCodes[k];
   }
   writeOverrides(o);

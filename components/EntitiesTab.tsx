@@ -19,7 +19,7 @@ const NAVY = "#012479";
 const NAVY_BG = "#f0f4fc";
 const NAVY_BORDER = "#c8d5f0";
 
-interface ProductEntry { name: string; pubCode: string; reviewCount: number; guru: string }
+interface ProductEntry { name: string; pubCode: string; reviewCount: number; gurus: string[] }
 interface GuruEntry { name: string; reviewCount: number }
 interface PublisherGroup { name: string; gurus: GuruEntry[]; products: ProductEntry[]; reviewCount: number }
 interface Graph {
@@ -82,8 +82,15 @@ export default function EntitiesTab() {
     await post({ action: "assign", kind, name, publisher }, `Assigned "${name}" to ${publisher}`);
   };
 
-  const assignGuru = async (product: string, guru: string) => {
-    await post({ action: "assignGuru", product, guru }, guru ? `Assigned "${product}" to ${guru}` : `Cleared guru on "${product}"`);
+  // Products can have multiple gurus: writes the FULL list (replaces derived set).
+  const setProductGurus = async (product: string, gurus: string[], okMsg: string) => {
+    await post({ action: "setProductGurus", product, gurus }, okMsg);
+  };
+  const addGuruToProduct = async (p: ProductEntry, guru: string) => {
+    await setProductGurus(p.name, [...p.gurus, guru], `Added ${guru} to "${p.name}"`);
+  };
+  const removeGuruFromProduct = async (p: ProductEntry, guru: string) => {
+    await setProductGurus(p.name, p.gurus.filter((g) => g !== guru), `Removed ${guru} from "${p.name}"`);
   };
 
   const remove = async (kind: Kind, name: string) => {
@@ -131,19 +138,27 @@ export default function EntitiesTab() {
         }
       : {};
 
-  const GuruSelect = ({ product }: { product: ProductEntry }) => (
-    <select
-      value={product.guru}
-      onChange={(ev) => void assignGuru(product.name, ev.target.value)}
-      className="text-[11px] rounded border border-gray-200 px-1 py-0.5 text-gray-500 max-w-32"
-      title="Guru this product belongs to"
-    >
-      <option value="">no guru</option>
-      {product.guru && !allGurus.some((g) => g.name === product.guru) && (
-        <option value={product.guru}>{product.guru}</option>
-      )}
-      {allGurus.map((g) => <option key={g.name} value={g.name}>{g.name}</option>)}
-    </select>
+  const GuruChips = ({ product }: { product: ProductEntry }) => (
+    <span className="inline-flex items-center gap-1 flex-wrap max-w-56">
+      {product.gurus.map((g) => (
+        <span key={g} className="inline-flex items-center gap-0.5 text-[10px] rounded-full px-1.5 py-0.5 border bg-white text-gray-600 border-gray-200">
+          {g}
+          <button onClick={() => void removeGuruFromProduct(product, g)} title={`Remove ${g}`}
+            className="text-gray-300 hover:text-red-500">×</button>
+        </span>
+      ))}
+      <select
+        value=""
+        onChange={(ev) => { if (ev.target.value) void addGuruToProduct(product, ev.target.value); }}
+        className="text-[10px] rounded border border-gray-200 px-1 py-0.5 text-gray-400 w-14"
+        title="Add a guru — products can have several"
+      >
+        <option value="">+ guru</option>
+        {allGurus.filter((g) => !product.gurus.includes(g.name)).map((g) => (
+          <option key={g.name} value={g.name}>{g.name}</option>
+        ))}
+      </select>
+    </span>
   );
 
   const ProductRow = ({ p, showGuru }: { p: ProductEntry; showGuru: boolean }) => (
@@ -152,7 +167,7 @@ export default function EntitiesTab() {
         {p.name}
         {p.reviewCount > 0 && <span className="text-gray-300"> ·{p.reviewCount}</span>}
       </span>
-      {showGuru && <GuruSelect product={p} />}
+      {showGuru && <GuruChips product={p} />}
       <input
         defaultValue={p.pubCode}
         placeholder="pub code"
@@ -274,7 +289,7 @@ export default function EntitiesTab() {
       ) : (
         <div className="space-y-4">
           {allGurus.map((g) => {
-            const products = allProducts.filter((p) => p.guru === g.name);
+            const products = allProducts.filter((p) => p.gurus.includes(g.name));
             return (
               <div key={g.name} className="rounded-lg border" style={{ borderColor: NAVY_BORDER }}>
                 <div className="px-4 py-2.5 flex items-center justify-between group" style={{ background: NAVY_BG }}>
@@ -302,9 +317,12 @@ export default function EntitiesTab() {
                             {p.publisher && <span className="text-gray-400"> — {p.publisher}</span>}
                             {p.reviewCount > 0 && <span className="text-gray-300"> ·{p.reviewCount}</span>}
                           </span>
+                          {p.gurus.length > 1 && (
+                            <span className="text-[10px] text-gray-300">+{p.gurus.length - 1} more</span>
+                          )}
                           <button
-                            onClick={() => void assignGuru(p.name, "")}
-                            title={`Unassign from ${g.name}`}
+                            onClick={() => void removeGuruFromProduct(p, g.name)}
+                            title={`Remove ${g.name} from this product (other gurus stay)`}
                             className="opacity-0 group-hover:opacity-100 text-[11px] text-gray-400 hover:text-red-600"
                           >unassign</button>
                           <EntityActions kind="product" name={p.name} />
@@ -314,12 +332,15 @@ export default function EntitiesTab() {
                   )}
                   <select
                     value=""
-                    onChange={(ev) => { if (ev.target.value) void assignGuru(ev.target.value, g.name); }}
+                    onChange={(ev) => {
+                      const prod = allProducts.find((p) => p.name === ev.target.value);
+                      if (prod) void addGuruToProduct(prod, g.name);
+                    }}
                     className="text-[11px] rounded border border-gray-200 px-1 py-0.5 text-gray-500"
                   >
                     <option value="">Assign a product…</option>
-                    {allProducts.filter((p) => p.guru !== g.name).map((p) => (
-                      <option key={p.name} value={p.name}>{p.name}{p.guru ? ` (currently ${p.guru})` : ""}</option>
+                    {allProducts.filter((p) => !p.gurus.includes(g.name)).map((p) => (
+                      <option key={p.name} value={p.name}>{p.name}{p.gurus.length ? ` (also ${p.gurus.join(", ")})` : ""}</option>
                     ))}
                   </select>
                 </div>
@@ -327,21 +348,21 @@ export default function EntitiesTab() {
             );
           })}
 
-          {allProducts.some((p) => !p.guru) && (
+          {allProducts.some((p) => p.gurus.length === 0) && (
             <div className="rounded-lg border border-dashed border-gray-300">
               <div className="px-4 py-2.5 bg-gray-50">
                 <span className="font-bold text-sm text-gray-500">Products without a guru</span>
                 <span className="text-[11px] text-gray-400 ml-2">assign below</span>
               </div>
               <div className="px-4 py-3 space-y-1">
-                {allProducts.filter((p) => !p.guru).map((p) => (
+                {allProducts.filter((p) => p.gurus.length === 0).map((p) => (
                   <div key={p.name} className="group flex items-center gap-2 text-xs">
                     <span className="flex-1 truncate" title={p.name} {...mergeTargetProps("product", p.name)}>
                       {p.name}
                       {p.publisher && <span className="text-gray-400"> — {p.publisher}</span>}
                       {p.reviewCount > 0 && <span className="text-gray-300"> ·{p.reviewCount}</span>}
                     </span>
-                    <GuruSelect product={p} />
+                    <GuruChips product={p} />
                     <EntityActions kind="product" name={p.name} />
                   </div>
                 ))}
