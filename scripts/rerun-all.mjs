@@ -32,7 +32,10 @@ const REPORT_FILE = path.join(process.cwd(), "rerun-all-report.json");
 // Pace + retry so we don't overwhelm the single Railway instance.
 const PACE_MS = Number(process.env.PACE_MS ?? 8000);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-async function fetchRetry(url, opts, tries = 4) {
+// The whole API is auth-gated; scripts authenticate as the maintenance service.
+const AUTH = process.env.HUB_API_TOKEN ? { "x-hub-token": process.env.HUB_API_TOKEN } : {};
+async function fetchRetry(url, opts = {}, tries = 4) {
+  opts = { ...opts, headers: { ...AUTH, ...(opts.headers ?? {}) } };
   let last;
   for (let i = 0; i < tries; i++) {
     try {
@@ -62,7 +65,7 @@ function logProgress(reviewId) {
 }
 
 async function getReviews() {
-  const res = await fetch(`${BASE}/api/reviews`);
+  const res = await fetch(`${BASE}/api/reviews`, { headers: AUTH });
   if (!res.ok) throw new Error(`GET /api/reviews failed: ${res.status}`);
   const reviews = await res.json();
   return Array.isArray(reviews) ? reviews : [];
