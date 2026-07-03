@@ -41,6 +41,15 @@ import { normalizeCode } from "./promo-stats";
 export const FULL_TIER_POOL = 20;
 /** Below this, no tier at all — "insufficient comparables". */
 export const MIN_TIER_POOL = 8;
+/**
+ * Distribution floor (publisher decision 2026-07-03): only promos with at
+ * least this many Promotion Views count as ranking peers. The raw sheet's
+ * median row got ~2.7K clicks — ranking against that trickle tail inflated
+ * every percentile ("40K clicks showed as top 11%; it's average at best").
+ * A promo below the floor was never really pushed, so it gets no tier —
+ * unjudged, not "failed".
+ */
+export const MIN_POOL_VIEWS = 10_000;
 
 export interface TierDerivation {
   promoCode: string;
@@ -168,6 +177,8 @@ export function deriveTiers(
       const views = viewsCol
         ? normalizedStatNumber(rec.stats[viewsCol], classifyStatColumn(viewsCol))
         : null;
+      // Distribution floor: never-pushed promos neither rank nor serve as peers.
+      if (views == null || views < MIN_POOL_VIEWS) return null;
       const clicksCol = findOrderFormClicksColumn(rec.stats);
       const clicks = clicksCol
         ? normalizedStatNumber(rec.stats[clicksCol], classifyStatColumn(clicksCol))
@@ -291,7 +302,7 @@ export function describeDerivation(d: TierDerivation): string {
   if (d.metric === "manual") return "manual tier set by publisher";
   const kind = BUCKET_METRIC[d.bucket].label;
   const cohort = d.bucket === "acquisition" ? "front-end promos" : "backend/mega-bundle promos";
-  let line = `${rankPhrase(d.percentile)} by ${kind} among ${d.pool.n} ${cohort}`;
+  let line = `${rankPhrase(d.percentile)} by ${kind} among ${d.pool.n} ${cohort} with real distribution (≥${MIN_POOL_VIEWS / 1000}K views)`;
   if (d.reach) {
     const bits = [
       `${compactCount(d.reach.views)} views` +
