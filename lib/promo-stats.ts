@@ -23,6 +23,8 @@
  */
 
 import crypto from "crypto";
+import { findViewsColumn, findOrdersColumn } from "./promo-classify";
+import { classifyStatColumn, normalizedStatNumber } from "./stat-format";
 
 export interface PromoStats {
   promoCode: string;
@@ -225,20 +227,34 @@ async function loadMap(): Promise<Map<string, PromoStats>> {
     let duplicateCode = 0;
     const duplicateExamples: string[] = [];
     const map = new Map<string, PromoStats>();
+    // When the sheet reuses a creative code across rows (e.g. a stray 4-order
+    // row sharing "DPL LAUNCH - 1" with the real launch), keep the DOMINANT
+    // campaign: most promotion views, then most orders. Last-row-wins silently
+    // replaced real campaigns with strays (publisher caught it 2026-07-03).
+    const rowWeight = (stats: Record<string, string>): number => {
+      const vCol = findViewsColumn(stats);
+      const views = vCol ? normalizedStatNumber(stats[vCol], classifyStatColumn(vCol)) : null;
+      if (views != null && views > 0) return views * 1_000_000; // views dominate
+      const oCol = findOrdersColumn(stats);
+      const orders = oCol ? normalizedStatNumber(stats[oCol], classifyStatColumn(oCol)) : null;
+      return orders ?? 0;
+    };
     for (const row of dataRows) {
       const rawCode = (row[codeIdx] ?? "").toString();
       if (!rawCode.trim()) { blankCode++; continue; }
       const key = normalizeCode(rawCode);
-      if (map.has(key)) {
-        duplicateCode++;
-        if (duplicateExamples.length < 5) duplicateExamples.push(rawCode.trim());
-      }
       const stats: Record<string, string> = {};
       headers.forEach((h, i) => {
         if (i === codeIdx) return;
         const val = (row[i] ?? "").toString().trim();
         if (h.trim() && val) stats[h.trim()] = val;
       });
+      const prev = map.get(key);
+      if (prev) {
+        duplicateCode++;
+        if (!duplicateExamples.includes(rawCode.trim())) duplicateExamples.push(rawCode.trim());
+        if (rowWeight(stats) <= rowWeight(prev.stats)) continue; // keep the dominant row
+      }
       map.set(key, { promoCode: rawCode.trim(), stats });
     }
     lastLoadError = null;
