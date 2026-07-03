@@ -77,9 +77,11 @@ async function buildGraph(): Promise<{ publishers: PublisherGroup[]; unassigned:
   const snap = canonicalSnapshot as {
     guruPublisher?: Record<string, string>;
     publicationPublisher?: Record<string, string>;
+    publicationGuru?: Record<string, string>;
   };
   for (const [g, pub] of Object.entries(snap.guruPublisher ?? {})) guruPub.set(normKey(g), canonPublisher(pub));
   for (const [p, pub] of Object.entries(snap.publicationPublisher ?? {})) productPub.set(normKey(p), canonPublisher(pub));
+  for (const [p, g] of Object.entries(snap.publicationGuru ?? {})) productGuru.set(normKey(p), canonGuru(g));
   const rows = parseDirectory(await loadPublishingDirectory());
   for (const r of rows) {
     const parent = canonPublisher(stripProductCode(r.parent));
