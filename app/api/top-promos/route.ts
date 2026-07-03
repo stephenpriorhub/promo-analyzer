@@ -79,15 +79,21 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({ promos });
 }
 
-/** First clean sentence of the effectiveness rationale, as a compact one-liner. */
+/** First meaningful sentence of the effectiveness rationale, as a compact one-liner. */
 function firstSentence(text: string | undefined): string | null {
   if (!text) return null;
   const clean = text
     .replace(/[#*_>`]/g, "")
+    .replace(/^\s*(score:\s*\d+(?:\.\d+)?\/10\.?\s*)?(rationale:\s*)?/i, "") // drop "Score: 8/10 Rationale:" preamble
+    .replace(/^\s*(?:\d+[.)]|[-•])\s*/, "") // drop a leading list marker
     .replace(/\s+/g, " ")
     .trim();
   if (!clean) return null;
-  const m = clean.match(/^.*?[.!?](\s|$)/);
-  const s = (m ? m[0] : clean).trim();
+  // Take sentences until we have something substantive (a bare "1." isn't).
+  let out = "";
+  const re = /[^.!?]*[.!?](\s|$)/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(clean)) && out.length < 15) out += m[0];
+  const s = (out || clean).trim();
   return s.length > 200 ? s.slice(0, 200) + "…" : s;
 }
