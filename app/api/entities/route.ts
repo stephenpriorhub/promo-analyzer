@@ -30,6 +30,7 @@ import {
   setProductGuru,
   setPubCode,
   removeEntity,
+  restoreEntity,
   resolveAlias,
   normKey,
   type EntityKind,
@@ -206,7 +207,17 @@ async function buildGraph(): Promise<{ publishers: PublisherGroup[]; unassigned:
 }
 
 export async function GET() {
-  return NextResponse.json(await buildGraph());
+  const graph = await buildGraph();
+  // Hidden entities ride along so the UI can offer restore (accidental ✕).
+  const o = readOverrides();
+  return NextResponse.json({
+    ...graph,
+    removed: [
+      ...o.removed.gurus.map((n) => ({ kind: "guru" as const, name: n })),
+      ...o.removed.products.map((n) => ({ kind: "product" as const, name: n })),
+      ...o.removed.publishers.map((n) => ({ kind: "publisher" as const, name: n })),
+    ],
+  });
 }
 
 const KINDS = new Set(["guru", "product", "publisher"]);
@@ -273,6 +284,16 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "kind and name required" }, { status: 400 });
     }
     removeEntity(kind as EntityKind, name.trim());
+    void writeBrainNote("Entity Merges", buildMergeNote(), "promo-analysis-tool");
+    return NextResponse.json({ ok: true });
+  }
+
+  if (body.action === "restore") {
+    const { kind, name } = body;
+    if (!kind || !KINDS.has(kind) || !name?.trim()) {
+      return NextResponse.json({ error: "kind and name required" }, { status: 400 });
+    }
+    restoreEntity(kind as EntityKind, name.trim());
     void writeBrainNote("Entity Merges", buildMergeNote(), "promo-analysis-tool");
     return NextResponse.json({ ok: true });
   }

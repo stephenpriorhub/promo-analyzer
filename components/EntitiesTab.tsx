@@ -25,6 +25,7 @@ interface PublisherGroup { name: string; gurus: GuruEntry[]; products: ProductEn
 interface Graph {
   publishers: PublisherGroup[];
   unassigned: { gurus: GuruEntry[]; products: ProductEntry[] };
+  removed?: { kind: "guru" | "product" | "publisher"; name: string }[];
 }
 
 type Kind = "guru" | "product" | "publisher";
@@ -347,6 +348,27 @@ export default function EntitiesTab() {
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {(graph.removed?.length ?? 0) > 0 && (
+        <div className="mt-6 rounded-lg border border-dashed border-gray-300">
+          <div className="px-4 py-2 bg-gray-50">
+            <span className="font-bold text-sm text-gray-500">Removed from directory</span>
+            <span className="text-[11px] text-gray-400 ml-2">hidden, not deleted — restore anytime</span>
+          </div>
+          <div className="px-4 py-2 space-y-1">
+            {graph.removed!.map((e) => (
+              <div key={`${e.kind}:${e.name}`} className="flex items-center gap-2 text-xs text-gray-500">
+                <span className="text-[10px] uppercase text-gray-300 w-14">{e.kind}</span>
+                <span className="flex-1 truncate capitalize">{e.name}</span>
+                <button
+                  onClick={() => void post({ action: "restore", kind: e.kind, name: e.name }, `Restored "${e.name}"`)}
+                  className="text-[11px] text-blue-600 hover:underline"
+                >restore</button>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
