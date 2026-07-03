@@ -12,6 +12,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { classifyStatColumn, formatStatValue, normalizedStatNumber, toNumber } from "@/lib/stat-format";
+import { findOrdersColumn, findOrderFormClicksColumn, findRevenueColumn, findConversionRateColumn } from "@/lib/promo-classify";
 import type { PerformanceTier } from "@/lib/learning-kb";
 
 const NAVY = "#012479";
@@ -59,33 +60,26 @@ const TIER_STYLE: Record<PerformanceTier, { bg: string; fg: string; label: strin
 };
 const TIER_RANK: Record<PerformanceTier, number> = { gold_standard: 5, strong: 4, average: 3, weak: 2, failed: 1 };
 
-/** Find a stat column client-side (cost columns excluded). */
-function statCol(stats: Record<string, string>, pattern: RegExp): string | null {
-  return (
-    Object.keys(stats).find(
-      (h) => pattern.test(h) && !/cost|refund|cancel|chargeback|unsub|cpa|spend/i.test(h)
-    ) ?? null
-  );
-}
-function statOf(row: PromoRow, pattern: RegExp): string | null {
+// Columns resolve through the SAME hardened finders the scoring engine uses —
+// a local regex here once matched "Clicks to Order From" as "Orders"
+// (publisher caught it 2026-07-03). Never re-implement column picking.
+type ColFinder = (stats: Record<string, string>) => string | null;
+function statOf(row: PromoRow, find: ColFinder): string | null {
   if (!row.real) return null;
-  const col = statCol(row.real.stats, pattern);
+  const col = find(row.real.stats);
   return col ? row.real.stats[col] : null;
 }
-function statNum(row: PromoRow, pattern: RegExp): number | null {
-  const raw = statOf(row, pattern);
-  if (raw == null) return null;
-  const col = statCol(row.real!.stats, pattern)!;
+function statNum(row: PromoRow, find: ColFinder): number | null {
+  if (!row.real) return null;
+  const col = find(row.real.stats);
+  if (!col) return null;
+  const raw = row.real.stats[col];
   return normalizedStatNumber(raw, classifyStatColumn(col)) ?? toNumber(raw);
 }
 
-const ORDERS_RE = /gross\s*orders|orders?\b/i;
-const REVENUE_RE = /gross\s*revenue|total\s*revenue/i;
-const CONV_RE = /^conversion\s*rate$/i;
-
 type SortKey =
   | "promo" | "code" | "publisher" | "type" | "status"
-  | "copy" | "predicted" | "realScore" | "tier" | "orders" | "revenue" | "conv";
+  | "copy" | "predicted" | "realScore" | "tier" | "orders" | "clicks" | "revenue" | "conv";
 
 export default function PerformanceTab() {
   const [data, setData] = useState<ApiData | null>(null);
@@ -213,9 +207,10 @@ export default function PerformanceTab() {
       case "predicted": return r.predicted?.score ?? null;
       case "realScore": return r.real?.performanceScore ?? null;
       case "tier": return r.real ? TIER_RANK[r.real.tier] : null;
-      case "orders": return statNum(r, ORDERS_RE);
-      case "revenue": return statNum(r, REVENUE_RE);
-      case "conv": return statNum(r, CONV_RE);
+      case "orders": return statNum(r, findOrdersColumn);
+      case "clicks": return statNum(r, findOrderFormClicksColumn);
+      case "revenue": return statNum(r, findRevenueColumn);
+      case "conv": return statNum(r, findConversionRateColumn);
     }
   };
 
@@ -313,6 +308,7 @@ export default function PerformanceTab() {
                 {th("realScore", "Real Score", "text-right")}
                 {th("tier", "Tier")}
                 {th("orders", "Orders", "text-right")}
+                {th("clicks", "OF Clicks", "text-right")}
                 {th("revenue", "Revenue", "text-right")}
                 {th("conv", "Conv. Rate", "text-right")}
                 <th className="px-3 py-2 font-semibold">Brain</th>
@@ -320,9 +316,10 @@ export default function PerformanceTab() {
             </thead>
             <tbody>
               {sorted.map((r) => {
-                const orders = statOf(r, ORDERS_RE);
-                const revenue = statOf(r, REVENUE_RE);
-                const conv = statOf(r, CONV_RE);
+                const orders = statOf(r, findOrdersColumn);
+                const clicks = statOf(r, findOrderFormClicksColumn);
+                const revenue = statOf(r, findRevenueColumn);
+                const conv = statOf(r, findConversionRateColumn);
                 const dash = <span className="text-gray-300">—</span>;
                 return (
                   <tr key={r.reviewId} className="border-t" style={{ borderColor: "#eef1f8" }}>
@@ -349,6 +346,7 @@ export default function PerformanceTab() {
                       ) : dash}
                     </td>
                     <td className="px-3 py-2 text-right">{orders ? formatStatValue(orders, "number") : dash}</td>
+                    <td className="px-3 py-2 text-right text-gray-500" title="Clicks to Order Form — checkout-page views, not orders">{clicks ? formatStatValue(clicks, "number") : dash}</td>
                     <td className="px-3 py-2 text-right">{revenue ? formatStatValue(revenue, "currency") : dash}</td>
                     <td className="px-3 py-2 text-right">{conv ? formatStatValue(conv, "percent") : dash}</td>
                     <td className="px-3 py-2">
