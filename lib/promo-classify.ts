@@ -90,13 +90,32 @@ function isCostColumn(h: string): boolean {
   return /cost|refund|cancel|charge\s*back|chargeback|unsub|return|decline|cpa|spend/i.test(h);
 }
 
-/** Find the orders column (a count column named orders/sales) in a stat row. */
+/**
+ * "Clicks to Order Form" are checkout-page views, NOT orders (publisher
+ * clarification 2026-07-03) — any click/order-form header must never be
+ * picked as the orders metric.
+ */
+function isClicksColumn(h: string): boolean {
+  return /click|order\s*form|to\s*order/i.test(h);
+}
+
+/** Find the orders column (actual orders/sales — e.g. "Total Gross Orders"). */
 export function findOrdersColumn(stats: Record<string, string>): string | null {
-  const keys = Object.keys(stats).filter((h) => !isCostColumn(h));
+  const keys = Object.keys(stats).filter((h) => !isCostColumn(h) && !isClicksColumn(h));
   return (
     keys.find((h) => /gross\s*orders?/i.test(h)) ??
     keys.find((h) => classifyStatColumn(h) === "number" && /orders?\b/i.test(h)) ??
     keys.find((h) => classifyStatColumn(h) === "number" && /\bsales\b/i.test(h)) ??
+    null
+  );
+}
+
+/** Find the order-form clicks column (checkout-page views after the promo). */
+export function findOrderFormClicksColumn(stats: Record<string, string>): string | null {
+  const keys = Object.keys(stats).filter((h) => !isCostColumn(h));
+  return (
+    keys.find((h) => /clicks\s*to\s*order\s*(form|from)/i.test(h)) ??
+    keys.find((h) => classifyStatColumn(h) === "number" && /\bclicks?\b/i.test(h)) ??
     null
   );
 }
@@ -121,12 +140,17 @@ export function findViewsColumn(stats: Record<string, string>): string | null {
   );
 }
 
-/** Find the overall conversion-rate column (prefer the plain "Conversion Rate"). */
+/**
+ * Find the overall conversion-rate column: Orders / Promotion Views (publisher
+ * definition). ONLY the plain "Conversion Rate" column qualifies — "OF
+ * Conversion Rate" / "Order Form CR%" are orders-per-CLICK, a different ratio,
+ * and must never stand in for it.
+ */
 export function findConversionRateColumn(stats: Record<string, string>): string | null {
   const keys = Object.keys(stats).filter((h) => !isCostColumn(h));
   return (
     keys.find((h) => /^conversion\s*rate$/i.test(h.trim())) ??
-    keys.find((h) => /conversion\s*rate/i.test(h)) ??
+    keys.find((h) => /conversion\s*rate/i.test(h) && !/\bof\b|order\s*form|batch/i.test(h)) ??
     null
   );
 }

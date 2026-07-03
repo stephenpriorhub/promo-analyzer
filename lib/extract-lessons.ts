@@ -32,8 +32,16 @@ Publisher's assessment: {MY_SCORE}/10
 Publisher notes: {REASONING}
 
 ## Publisher Economics (how to interpret results — direct from the publisher)
-- Front-end promos (acquisition) are judged by ORDER VOLUME. Reach is EARNED: a promo that sustained very high traffic proved it was economical and viable to keep pushing. Treat scale itself as evidence of success, never as an external factor that "inflates" the result.
-- A lower conversion rate at very high reach can still be a winning promo. Conversion rate typically declines late in a campaign IF the promo reached scale — late-flight CR decay is normal decay, not copy weakness. Do not extract lessons that penalize copy for a modest conversion rate when the promo scaled.
+Metric glossary (do not confuse these):
+- "Promotion Views" = how many people saw the promo.
+- "Clicks to Order Form" = checkout-page views after watching the promo. NOT orders.
+- "Total Gross Orders" = actual orders/sales. This is the real outcome.
+- "Conversion Rate" = Orders / Promotion Views. ("OF Conversion Rate" is a different ratio — orders per order-form click.)
+
+Weighting rules:
+- Front-end promos (acquisition) are judged by TOTAL ORDERS first, conversion rate second. Reach is EARNED: a promo that sustained very high traffic proved it was economical and viable to keep pushing. Treat scale itself as evidence of success, never as an external factor that "inflates" the result.
+- Read conversion rate CAREFULLY against click volume: more clicks usually means a lower conversion rate. High clicks + high orders outweighs a modest conversion rate. A strong conversion rate WITH relatively high clicks and orders is VERY good — the best case.
+- Conversion rate typically declines late in a campaign IF the promo reached scale — late-flight CR decay is normal decay, not copy weakness. Do not extract lessons that penalize copy for a modest conversion rate when the promo scaled.
 - Backend and mega-bundle promos (monetization) are judged by REVENUE, earned against roughly constant house-list exposure — there, copy quality is the free variable and conversion differences are meaningful.
 
 ## Instructions

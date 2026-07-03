@@ -31,6 +31,7 @@ import {
   findRevenueColumn,
   findViewsColumn,
   findConversionRateColumn,
+  findOrderFormClicksColumn,
   BUCKET_METRIC,
   type PerfBucket,
 } from "./promo-classify";
@@ -70,7 +71,13 @@ export interface TierDerivation {
     views: number;
     /** 0..1 rank of this promo's views within its bucket pool (null if peers lack views). */
     viewsPercentile: number | null;
-    /** Overall conversion rate, as a percentage (e.g. 0.42 = 0.42%). */
+    /** Order-form clicks = checkout-page views after the promo (NOT orders). */
+    clicks: number | null;
+    /** 0..1 rank of clicks within the bucket pool. */
+    clicksPercentile: number | null;
+    /** Conversion rate = Orders / Promotion Views, as a percentage
+     * (publisher definition; computed from those columns when the plain
+     * "Conversion Rate" column is absent — never the order-form CR). */
     conversionRate: number | null;
   } | null;
 }
@@ -161,11 +168,19 @@ export function deriveTiers(
       const views = viewsCol
         ? normalizedStatNumber(rec.stats[viewsCol], classifyStatColumn(viewsCol))
         : null;
+      const clicksCol = findOrderFormClicksColumn(rec.stats);
+      const clicks = clicksCol
+        ? normalizedStatNumber(rec.stats[clicksCol], classifyStatColumn(clicksCol))
+        : null;
       const crCol = findConversionRateColumn(rec.stats);
-      const conversionRate = crCol
+      let conversionRate = crCol
         ? normalizedStatNumber(rec.stats[crCol], classifyStatColumn(crCol))
         : null;
-      return { rec, bucket, metric, value, views, conversionRate };
+      // Publisher definition fallback: CR = Orders / Promotion Views.
+      if (conversionRate == null && bucket === "acquisition" && views && views > 0) {
+        conversionRate = Math.round((value / views) * 100 * 100) / 100;
+      }
+      return { rec, bucket, metric, value, views, clicks, conversionRate };
     })
     .filter((v): v is NonNullable<typeof v> => v !== null);
 
@@ -187,16 +202,17 @@ export function deriveTiers(
       const beaten = peers.filter((p) => p.value < v.value).length;
       const tied = peers.filter((p) => p.value === v.value).length;
       const percentile = (beaten + tied / 2) / peers.length;
-      // Views rank against same-bucket peers that also report views.
-      let viewsPercentile: number | null = null;
-      if (v.views != null) {
-        const viewPeers = peers.filter((p) => p.views != null);
-        if (viewPeers.length >= 3) {
-          const vb = viewPeers.filter((p) => p.views! < v.views!).length;
-          const vt = viewPeers.filter((p) => p.views === v.views).length;
-          viewsPercentile = Math.round(((vb + vt / 2) / viewPeers.length) * 1000) / 1000;
-        }
-      }
+      // Views/clicks rank against same-bucket peers that also report them.
+      const rankAmong = (mine: number | null, get: (p: (typeof peers)[number]) => number | null): number | null => {
+        if (mine == null) return null;
+        const pool2 = peers.filter((p) => get(p) != null);
+        if (pool2.length < 3) return null;
+        const below = pool2.filter((p) => get(p)! < mine).length;
+        const tied2 = pool2.filter((p) => get(p) === mine).length;
+        return Math.round(((below + tied2 / 2) / pool2.length) * 1000) / 1000;
+      };
+      const viewsPercentile = rankAmong(v.views, (p) => p.views);
+      const clicksPercentile = rankAmong(v.clicks, (p) => p.clicks);
       const derivedTier = scheme === "5-tier" ? fullTier(percentile) : reducedTier(percentile);
       const tier = v.rec.tierOverride ?? derivedTier;
       // 3-tier pools may not make decile claims: clamp away from gold/failed bands.
@@ -221,7 +237,13 @@ export function deriveTiers(
         pool: { bucket, n: pool.length },
         reach:
           v.views != null
-            ? { views: v.views, viewsPercentile, conversionRate: v.conversionRate }
+            ? {
+                views: v.views,
+                viewsPercentile,
+                clicks: v.clicks,
+                clicksPercentile,
+                conversionRate: v.conversionRate,
+              }
             : null,
       });
     }
@@ -275,8 +297,14 @@ export function describeDerivation(d: TierDerivation): string {
       `${compactCount(d.reach.views)} views` +
         (d.reach.viewsPercentile != null ? ` (${rankPhrase(d.reach.viewsPercentile)} reach)` : ""),
     ];
-    if (d.reach.conversionRate != null) bits.push(`${d.reach.conversionRate.toFixed(2)}% conversion`);
-    line += `; reached ${bits.join(" at ")}`;
+    if (d.reach.clicks != null) {
+      bits.push(
+        `${compactCount(d.reach.clicks)} order-form clicks` +
+          (d.reach.clicksPercentile != null ? ` (${rankPhrase(d.reach.clicksPercentile)})` : "")
+      );
+    }
+    if (d.reach.conversionRate != null) bits.push(`${d.reach.conversionRate.toFixed(2)}% conversion (orders/views)`);
+    line += `; reached ${bits.join(", ")}`;
     // Publisher rule 2026-07-03: sustained high reach means the promo stayed
     // economical to push — surface that reading wherever the derivation is shown.
     if (d.bucket === "acquisition" && d.reach.viewsPercentile != null && d.reach.viewsPercentile >= 0.75) {
