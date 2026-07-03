@@ -19,7 +19,7 @@ import {
 } from "@/lib/performance-db";
 import { deriveTiers, type TierDerivation } from "@/lib/performance-tier";
 import { fetchAllSheetStats, getSheetLoadError, getSheetLoadStats, isPromoStatsConfigured, normalizeCode } from "@/lib/promo-stats";
-import { getAllReviews, updateReviewPromoCode } from "@/lib/reviews-store";
+import { getAllReviews, updateReviewPromoCode, stampLabelSnapshot } from "@/lib/reviews-store";
 import { classifyStatColumn, normalizedStatNumber } from "@/lib/stat-format";
 import { predictAllPerformanceScores } from "@/lib/predict";
 
@@ -129,6 +129,23 @@ function buildPromoRows(): PromoRow[] {
     const rec = r.promoCode ? recordByCode.get(normalizeCode(r.promoCode)) ?? null : null;
     const d = rec ? derivations.get(rec.promoCode) ?? null : null;
     const p = predictions.get(r.id) ?? null;
+    // One-time lazy migration: promos taught before label freezing existed get
+    // their snapshot stamped from the current derivation (closest available
+    // approximation of the pool they were taught on). No-ops once stamped.
+    if (r.training?.source === "learned" && !r.training.labelSnapshot && d && d.metric !== "manual") {
+      stampLabelSnapshot(r.id, {
+        bucket: d.bucket,
+        metric: d.metric,
+        value: d.value,
+        percentile: d.percentile,
+        poolN: d.pool.n,
+        scheme: d.scheme,
+        performanceScore: d.performanceScore,
+        tier: d.tier,
+        frozenAt: new Date().toISOString(),
+        backfilled: true,
+      });
+    }
     return {
       reviewId: r.id,
       name: r.displayName ?? r.filename.replace(/\.[^.]+$/, ""),

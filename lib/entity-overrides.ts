@@ -10,7 +10,10 @@
  *   aliases.publishers: old name     -> canonical name
  *   guruPublisher:      "alexander green" -> "The Oxford Club"   (reassignment)
  *   productPublisher:   normalized product -> publisher           (reassignment)
+ *   productGuru:        normalized product -> guru display name   (assignment)
  *   pubCodes:           normalized product -> Agora pub code
+ *   removed:            entities hidden from the directory (noise/defunct);
+ *                       reviews keep their data — removal only hides the entry
  */
 
 import fs from "fs";
@@ -27,14 +30,18 @@ export interface EntityOverrides {
   aliases: { gurus: Record<string, string>; products: Record<string, string>; publishers: Record<string, string> };
   guruPublisher: Record<string, string>;
   productPublisher: Record<string, string>;
+  productGuru: Record<string, string>;
   pubCodes: Record<string, string>;
+  removed: { gurus: string[]; products: string[]; publishers: string[] };
 }
 
 const EMPTY: EntityOverrides = {
   aliases: { gurus: {}, products: {}, publishers: {} },
   guruPublisher: {},
   productPublisher: {},
+  productGuru: {},
   pubCodes: {},
+  removed: { gurus: [], products: [], publishers: [] },
 };
 
 export function normKey(s: string): string {
@@ -53,7 +60,13 @@ export function readOverrides(): EntityOverrides {
       },
       guruPublisher: raw.guruPublisher ?? {},
       productPublisher: raw.productPublisher ?? {},
+      productGuru: raw.productGuru ?? {},
       pubCodes: raw.pubCodes ?? {},
+      removed: {
+        gurus: raw.removed?.gurus ?? [],
+        products: raw.removed?.products ?? [],
+        publishers: raw.removed?.publishers ?? [],
+      },
     };
   } catch {
     return structuredClone(EMPTY);
@@ -100,6 +113,47 @@ export function setProductPublisher(product: string, publisher: string | null): 
   const o = readOverrides();
   if (publisher) o.productPublisher[normKey(product)] = publisher;
   else delete o.productPublisher[normKey(product)];
+  writeOverrides(o);
+  return o;
+}
+
+export function setProductGuru(product: string, guru: string | null): EntityOverrides {
+  const o = readOverrides();
+  if (guru) o.productGuru[normKey(product)] = guru;
+  else delete o.productGuru[normKey(product)];
+  writeOverrides(o);
+  return o;
+}
+
+/**
+ * Hide an entity from the directory (noise, defunct, or wrongly extracted).
+ * Reviews keep their data — this only removes the entry from the graph. Any
+ * manual assignments involving it are cleaned up so the file stays coherent.
+ */
+export function removeEntity(kind: EntityKind, name: string): EntityOverrides {
+  const o = readOverrides();
+  const k = normKey(name);
+  const list = o.removed[KIND_MAP[kind]];
+  if (!list.includes(k)) list.push(k);
+  if (kind === "guru") {
+    delete o.guruPublisher[k];
+    for (const [p, g] of Object.entries(o.productGuru)) if (normKey(g) === k) delete o.productGuru[p];
+  }
+  if (kind === "product") {
+    delete o.productPublisher[k];
+    delete o.productGuru[k];
+    delete o.pubCodes[k];
+  }
+  writeOverrides(o);
+  return o;
+}
+
+/** Un-hide a previously removed entity. */
+export function restoreEntity(kind: EntityKind, name: string): EntityOverrides {
+  const o = readOverrides();
+  const k = normKey(name);
+  const table = o.removed[KIND_MAP[kind]];
+  o.removed[KIND_MAP[kind]] = table.filter((x) => x !== k);
   writeOverrides(o);
   return o;
 }

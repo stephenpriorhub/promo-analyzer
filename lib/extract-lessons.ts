@@ -31,6 +31,11 @@ Actual market performance: {PERF_SCORE}/10
 Publisher's assessment: {MY_SCORE}/10
 Publisher notes: {REASONING}
 
+## Publisher Economics (how to interpret results — direct from the publisher)
+- Front-end promos (acquisition) are judged by ORDER VOLUME. Reach is EARNED: a promo that sustained very high traffic proved it was economical and viable to keep pushing. Treat scale itself as evidence of success, never as an external factor that "inflates" the result.
+- A lower conversion rate at very high reach can still be a winning promo. Conversion rate typically declines late in a campaign IF the promo reached scale — late-flight CR decay is normal decay, not copy weakness. Do not extract lessons that penalize copy for a modest conversion rate when the promo scaled.
+- Backend and mega-bundle promos (monetization) are judged by REVENUE, earned against roughly constant house-list exposure — there, copy quality is the free variable and conversion differences are meaningful.
+
 ## Instructions
 Extract 1-3 lessons that meet ALL of these criteria:
 1. **Generalizable** — applies to future promos, not just this one. Write "Promos that [X]..." not "This promo..."

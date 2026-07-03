@@ -132,6 +132,25 @@ export async function POST(req: NextRequest) {
       // Gold-standard is a publisher judgment — never auto-set from a derived tier.
       isBestPerformer: existing?.isBestPerformer ?? false,
       source: "learned",
+      // Freeze the label's provenance at teach time (publisher-approved
+      // 2026-07-03) — pools drift as sheet rows arrive; re-teaching re-freezes.
+      // Manual-tier derivations have no pool (NaN value/percentile) — nothing
+      // honest to freeze, so they carry no snapshot.
+      ...(d.metric !== "manual"
+        ? {
+            labelSnapshot: {
+              bucket: d.bucket,
+              metric: d.metric,
+              value: d.value,
+              percentile: d.percentile,
+              poolN: d.pool.n,
+              scheme: d.scheme,
+              performanceScore: d.performanceScore,
+              tier: d.tier,
+              frozenAt: new Date().toISOString(),
+            },
+          }
+        : {}),
     });
 
     const extract = await extractAndStoreLessons({

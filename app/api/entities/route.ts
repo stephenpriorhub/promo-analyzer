@@ -27,10 +27,13 @@ import {
   addAlias,
   setGuruPublisher,
   setProductPublisher,
+  setProductGuru,
   setPubCode,
+  removeEntity,
   resolveAlias,
   normKey,
   type EntityKind,
+  type EntityOverrides,
 } from "@/lib/entity-overrides";
 import { getAllReviews, applyEntityMerge } from "@/lib/reviews-store";
 import { writeBrainNote } from "@/lib/brain-writer";
@@ -42,6 +45,8 @@ interface ProductEntry {
   name: string;
   pubCode: string;
   reviewCount: number;
+  /** Guru this product is assigned to ("" when none). Manual assignment beats the directory. */
+  guru: string;
 }
 interface GuruEntry {
   name: string;
@@ -60,10 +65,15 @@ async function buildGraph(): Promise<{ publishers: PublisherGroup[]; unassigned:
   const canonProduct = (p: string) => resolveAlias("product", stripProductCode(p));
   const canonPublisher = (p: string) => resolveAlias("publisher", p);
 
+  const isRemoved = (kind: keyof EntityOverrides["removed"], name: string) =>
+    o.removed[kind].includes(normKey(name));
+
   // guru → publisher and product → publisher: snapshot seeds (works offline /
   // when the live directory fetch fails), live directory rows override.
+  // product → guru comes from the same directory rows; manual assignment wins.
   const guruPub = new Map<string, string>();
   const productPub = new Map<string, string>();
+  const productGuru = new Map<string, string>();
   const snap = canonicalSnapshot as {
     guruPublisher?: Record<string, string>;
     publicationPublisher?: Record<string, string>;
@@ -74,18 +84,26 @@ async function buildGraph(): Promise<{ publishers: PublisherGroup[]; unassigned:
   for (const r of rows) {
     const parent = canonPublisher(stripProductCode(r.parent));
     if (!parent || parent.startsWith("(")) continue;
+    const rowGurus: string[] = [];
     for (const g0 of r.guru.split(/\s+[+&]\s+/)) {
       const g = canonGuru(g0.trim());
-      if (g && !g.startsWith("(")) guruPub.set(normKey(g), parent);
+      if (g && !g.startsWith("(")) {
+        guruPub.set(normKey(g), parent);
+        rowGurus.push(g);
+      }
     }
     if (r.publication) {
       const p = canonProduct(r.publication);
-      if (p) productPub.set(normKey(p), parent);
+      if (p) {
+        productPub.set(normKey(p), parent);
+        if (rowGurus[0]) productGuru.set(normKey(p), rowGurus[0]);
+      }
     }
   }
   // Manual assignments override the directory
   for (const [g, pub] of Object.entries(o.guruPublisher)) guruPub.set(g, canonPublisher(pub));
   for (const [p, pub] of Object.entries(o.productPublisher)) productPub.set(p, canonPublisher(pub));
+  for (const [p, g] of Object.entries(o.productGuru)) productGuru.set(p, canonGuru(g));
 
   // Universe of names: directory/snapshot ∪ review-used values (aliased)
   const canon = await getCanonicalEntities();
@@ -93,9 +111,9 @@ async function buildGraph(): Promise<{ publishers: PublisherGroup[]; unassigned:
   const guruNames = new Map<string, string>(); // normKey → display
   const productNames = new Map<string, string>();
   const publisherNames = new Map<string, string>();
-  const addG = (g: string) => { const c = canonGuru(g); if (c && !c.startsWith("(")) guruNames.set(normKey(c), c); };
-  const addP = (p: string) => { const c = canonProduct(p); if (c && !c.startsWith("(")) productNames.set(normKey(c), c); };
-  const addPub = (p: string) => { const c = canonPublisher(p); if (c && !c.startsWith("(")) publisherNames.set(normKey(c), c); };
+  const addG = (g: string) => { const c = canonGuru(g); if (c && !c.startsWith("(") && !isRemoved("gurus", c)) guruNames.set(normKey(c), c); };
+  const addP = (p: string) => { const c = canonProduct(p); if (c && !c.startsWith("(") && !isRemoved("products", c)) productNames.set(normKey(c), c); };
+  const addPub = (p: string) => { const c = canonPublisher(p); if (c && !c.startsWith("(") && !isRemoved("publishers", c)) publisherNames.set(normKey(c), c); };
   canon.gurus.forEach(addG);
   canon.products.forEach(addP);
   canon.publishers.forEach(addPub);
@@ -139,13 +157,20 @@ async function buildGraph(): Promise<{ publishers: PublisherGroup[]; unassigned:
   for (const [k, name] of guruNames) {
     const entry: GuruEntry = { name, reviewCount: guruCount.get(k) ?? 0 };
     const pub = guruPub.get(k);
-    if (pub) groupFor(pub).gurus.push(entry);
+    // A removed publisher never resurrects as a group — its entities go unassigned.
+    if (pub && !isRemoved("publishers", pub)) groupFor(pub).gurus.push(entry);
     else unassigned.gurus.push(entry);
   }
   for (const [k, name] of productNames) {
-    const entry: ProductEntry = { name, pubCode: o.pubCodes[k] ?? "", reviewCount: productCount.get(k) ?? 0 };
+    const g = productGuru.get(k);
+    const entry: ProductEntry = {
+      name,
+      pubCode: o.pubCodes[k] ?? "",
+      reviewCount: productCount.get(k) ?? 0,
+      guru: g && !isRemoved("gurus", g) ? g : "",
+    };
     const pub = productPub.get(k);
-    if (pub) groupFor(pub).products.push(entry);
+    if (pub && !isRemoved("publishers", pub)) groupFor(pub).products.push(entry);
     else unassigned.products.push(entry);
   }
 
@@ -210,6 +235,24 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true });
   }
 
+  if (body.action === "assignGuru") {
+    const { product, guru } = body as { product?: string; guru?: string };
+    if (!product?.trim()) return NextResponse.json({ error: "product required" }, { status: 400 });
+    setProductGuru(product.trim(), guru?.trim() || null);
+    void writeBrainNote("Entity Merges", buildMergeNote(), "promo-analysis-tool");
+    return NextResponse.json({ ok: true });
+  }
+
+  if (body.action === "remove") {
+    const { kind, name } = body;
+    if (!kind || !KINDS.has(kind) || !name?.trim()) {
+      return NextResponse.json({ error: "kind and name required" }, { status: 400 });
+    }
+    removeEntity(kind as EntityKind, name.trim());
+    void writeBrainNote("Entity Merges", buildMergeNote(), "promo-analysis-tool");
+    return NextResponse.json({ ok: true });
+  }
+
   return NextResponse.json({ error: "Unknown action" }, { status: 400 });
 }
 
@@ -231,6 +274,12 @@ function buildMergeNote(): string {
   lines.push("", "## Manual publisher assignments");
   for (const [g, p] of Object.entries(o.guruPublisher)) lines.push(`- guru "${g}" → **${p}**`);
   for (const [pr, p] of Object.entries(o.productPublisher)) lines.push(`- product "${pr}" → **${p}**`);
+  lines.push("", "## Product → guru assignments");
+  for (const [pr, g] of Object.entries(o.productGuru)) lines.push(`- product "${pr}" → **${g}**`);
+  lines.push("", "## Removed from directory (reviews keep their data)");
+  for (const [kind, names] of Object.entries(o.removed)) {
+    for (const n of names) lines.push(`- ${kind.replace(/s$/, "")}: "${n}"`);
+  }
   lines.push("", "## Pub codes");
   for (const [pr, c] of Object.entries(o.pubCodes)) lines.push(`- ${pr}: \`${c}\``);
   return lines.join("\n") + "\n";

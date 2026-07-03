@@ -42,6 +42,27 @@ export interface TrainingData {
    * Similar-Promo Outcomes layer, which is where prediction belongs).
    */
   source?: "publisher" | "learned";
+  /**
+   * Frozen provenance of a learned performanceScore (publisher-approved
+   * 2026-07-03). Percentile pools shift as sheet rows arrive, so without this
+   * the label a promo was taught on drifts silently. The snapshot pins what
+   * the pool looked like at teach time; re-teaching re-freezes it.
+   */
+  labelSnapshot?: {
+    bucket: string;
+    metric: string;
+    value: number;
+    percentile: number;
+    poolN: number;
+    scheme: string;
+    /** The frozen label itself — self-contained even if training is restructured. */
+    performanceScore: number;
+    tier: string;
+    frozenAt: string;
+    /** True when stamped by the lazy migration from the CURRENT pool — an
+     * approximation of the teach-time pool, not true frozen provenance. */
+    backfilled?: boolean;
+  };
 }
 
 export interface SavedReview {
@@ -577,6 +598,23 @@ export function getReviewById(id: string): SavedReview | null {
   return readReviews().find((r) => r.id === id) ?? null;
 }
 
+/**
+ * One-time lazy migration: stamp a labelSnapshot onto already-learned reviews
+ * that were taught before label freezing existed. Touches nothing else.
+ */
+export function stampLabelSnapshot(
+  reviewId: string,
+  snapshot: NonNullable<TrainingData["labelSnapshot"]>
+): boolean {
+  const reviews = readReviews();
+  const r = reviews.find((x) => x.id === reviewId);
+  // Only learned labels have frozen provenance — never stamp publisher-entered training.
+  if (!r?.training || r.training.source !== "learned" || r.training.labelSnapshot) return false;
+  r.training.labelSnapshot = snapshot;
+  writeReviews(reviews);
+  return true;
+}
+
 export function updateReviewTraining(
   id: string,
   training: TrainingData
@@ -584,6 +622,12 @@ export function updateReviewTraining(
   const reviews = readReviews();
   const idx = reviews.findIndex((r) => r.id === id);
   if (idx === -1) return false;
+  // A frozen label's provenance survives form saves that don't carry it —
+  // otherwise a Training-tab save wipes the freeze and the lazy backfill
+  // re-stamps it from today's drifted pool.
+  if (!training.labelSnapshot && reviews[idx].training?.labelSnapshot) {
+    training = { ...training, labelSnapshot: reviews[idx].training!.labelSnapshot };
+  }
   reviews[idx].training = training;
   // When a re-evaluation is applied, it now regenerates the full 8-dimension
   // breakdown. Derive the displayed sub-scores + final from it so the breakdown

@@ -111,6 +111,26 @@ export function findRevenueColumn(stats: Record<string, string>): string | null 
   );
 }
 
+/** Find the promotion-views (reach) column in a stat row. */
+export function findViewsColumn(stats: Record<string, string>): string | null {
+  const keys = Object.keys(stats).filter((h) => !isCostColumn(h));
+  return (
+    keys.find((h) => /promotion\s*views/i.test(h)) ??
+    keys.find((h) => classifyStatColumn(h) === "number" && /\bviews\b/i.test(h)) ??
+    null
+  );
+}
+
+/** Find the overall conversion-rate column (prefer the plain "Conversion Rate"). */
+export function findConversionRateColumn(stats: Record<string, string>): string | null {
+  const keys = Object.keys(stats).filter((h) => !isCostColumn(h));
+  return (
+    keys.find((h) => /^conversion\s*rate$/i.test(h.trim())) ??
+    keys.find((h) => /conversion\s*rate/i.test(h)) ??
+    null
+  );
+}
+
 /** Find the average cart value column — the price proxy for un-analyzed industry rows. */
 export function findCartValueColumn(stats: Record<string, string>): string | null {
   const keys = Object.keys(stats);
