@@ -9,16 +9,20 @@
  * Safe to re-run; it appends lessons. Returns a per-promo summary.
  */
 
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getAllReviews } from "@/lib/reviews-store";
 import { detectGuru, detectPublisher } from "@/lib/brain-reader";
 import { extractAndStoreLessons } from "@/lib/extract-lessons";
 import { clearAllLessons } from "@/lib/learning-kb";
+import { getHubUser, isHubAdmin, forbidden } from "@/lib/hub-auth";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
-export async function POST() {
+export async function POST(req: NextRequest) {
+  // Starts with a full KB wipe — as destructive as DELETE /api/learning, so
+  // the same admin-only gate applies.
+  if (!isHubAdmin(await getHubUser(req))) return forbidden("Only OxfordHub Admins can rebuild the learning knowledge base.");
   // Idempotent rebuild: wipe the KB, then regenerate from current trained reviews.
   // Safe to re-run — won't accumulate duplicates.
   clearAllLessons();

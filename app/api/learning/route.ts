@@ -5,8 +5,9 @@
  * Read-only — used by the Lessons Learned view.
  */
 
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getAllLessons, clearAllLessons } from "@/lib/learning-kb";
+import { getHubUser, isHubAdmin, forbidden } from "@/lib/hub-auth";
 
 export const runtime = "nodejs";
 
@@ -19,7 +20,9 @@ export async function GET() {
   }
 }
 
-export async function DELETE() {
+export async function DELETE(req: NextRequest) {
+  // Wiping the learning KB is destructive and global — hub admins only.
+  if (!isHubAdmin(await getHubUser(req))) return forbidden("Only OxfordHub Admins can clear the learning knowledge base.");
   try {
     clearAllLessons();
     return NextResponse.json({ ok: true });

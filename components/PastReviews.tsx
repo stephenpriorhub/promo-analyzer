@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { SavedReview } from "@/lib/reviews-store";
+import { useHubUser, canModifyReview } from "./useHubUser";
 
 export interface InProgressJob {
   id: string;
@@ -75,6 +76,7 @@ export default function PastReviews({
   activeJobId,
 }: Props) {
   const [reviews, setReviews] = useState<SavedReview[]>([]);
+  const hubUser = useHubUser();
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
@@ -272,7 +274,12 @@ export default function PastReviews({
                     <span className="truncate">{name}</span>
                   </p>
                 )}
-                <p className="text-xs text-gray-400">{date}</p>
+                <p className="text-xs text-gray-400">
+                  {date}
+                  {review.uploadedBy && (
+                    <span title={review.uploadedBy.email}> · {review.uploadedBy.name ?? review.uploadedBy.email}</span>
+                  )}
+                </p>
               </div>
               <div className="flex items-center gap-1 shrink-0">
                 {(() => {
@@ -283,22 +290,25 @@ export default function PastReviews({
                     </span>
                   ) : null;
                 })()}
-                {/* Pencil / rename button */}
-                <button
-                  onClick={(e) => startEdit(review, e)}
-                  className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-blue-500 transition-all text-xs px-1"
-                  title="Rename"
-                >
-                  ✏
-                </button>
-                {/* Delete button */}
-                <button
-                  onClick={(e) => handleDelete(review.id, e)}
-                  className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500 transition-all text-xs px-1"
-                  title="Delete"
-                >
-                  ✕
-                </button>
+                {/* Rename/delete: admins or the promo's uploader only (server enforces too) */}
+                {canModifyReview(hubUser, review) && (
+                  <>
+                    <button
+                      onClick={(e) => startEdit(review, e)}
+                      className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-blue-500 transition-all text-xs px-1"
+                      title="Rename"
+                    >
+                      ✏
+                    </button>
+                    <button
+                      onClick={(e) => handleDelete(review.id, e)}
+                      className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500 transition-all text-xs px-1"
+                      title="Delete"
+                    >
+                      ✕
+                    </button>
+                  </>
+                )}
               </div>
             </div>
           );
