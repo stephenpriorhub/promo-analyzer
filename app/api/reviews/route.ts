@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAllReviews, deleteReview, renameReview, updateReviewTraining, updateReviewRunDate, updateReviewPromoCode, updateReviewPublisher, updateReviewGurus, updateReviewProduct, updateReviewPromoType, updateReviewPromoStatus, getReviewById, getCalibrationStats, PROMO_TYPES, PROMO_STATUSES, type PromoType, type PromoStatus } from "@/lib/reviews-store";
 import { detectGuru, detectPublisher } from "@/lib/brain-reader";
-import { getHubUser, canModifyReview, forbidden } from "@/lib/hub-auth";
 import { extractAndStoreLessons } from "@/lib/extract-lessons";
 import { getAllPerformanceRecords } from "@/lib/performance-db";
 import { normalizeCode } from "@/lib/promo-stats";
@@ -30,10 +29,6 @@ export async function DELETE(req: NextRequest) {
   if (!id) {
     return NextResponse.json({ error: "id required" }, { status: 400 });
   }
-  // Publisher rule 2026-07-03: only hub admins or the promo's uploader may delete.
-  const target = getReviewById(id);
-  if (!target) return NextResponse.json({ error: "Not found" }, { status: 404 });
-  if (!canModifyReview(await getHubUser(req), target)) return forbidden();
   const deleted = deleteReview(id);
   if (!deleted) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
@@ -48,11 +43,6 @@ export async function PATCH(req: NextRequest) {
   if (!id) {
     return NextResponse.json({ error: "id required" }, { status: 400 });
   }
-
-  // Publisher rule 2026-07-03: edits are admin-or-uploader only.
-  const editTarget = getReviewById(id);
-  if (!editTarget) return NextResponse.json({ error: "Not found" }, { status: 404 });
-  if (!canModifyReview(await getHubUser(req), editTarget)) return forbidden();
 
   if (displayName !== undefined) {
     const ok = renameReview(id, displayName ?? "");

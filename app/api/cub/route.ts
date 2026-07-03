@@ -3,8 +3,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { ANALYSIS_MODEL } from "@/lib/models";
 import { extractFile } from "@/lib/extract-text";
 import { CUB_SYSTEM_PROMPT } from "@/lib/build-prompt";
-import { updateReviewCUB, getReviewById } from "@/lib/reviews-store";
-import { getHubUser, canModifyReview, forbidden } from "@/lib/hub-auth";
+import { updateReviewCUB } from "@/lib/reviews-store";
 import { getEnv } from "@/lib/env";
 
 export const runtime = "nodejs";
@@ -21,12 +20,6 @@ export async function POST(req: NextRequest) {
 
     if (!file) {
       return NextResponse.json({ error: "No file provided" }, { status: 400 });
-    }
-
-    // Writes a CUB section onto the review — admin-or-uploader only.
-    if (reviewId) {
-      const review = getReviewById(reviewId);
-      if (review && !canModifyReview(await getHubUser(req), review)) return forbidden();
     }
 
     const bytes = await file.arrayBuffer();

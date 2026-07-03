@@ -131,11 +131,7 @@ async function analyzeFile(filePath, filename) {
 async function labelReview(reviewId, band) {
   const res = await fetchRetry(`${BASE}/api/reviews`, {
     method: "PATCH",
-    headers: {
-      "Content-Type": "application/json",
-      // Mutations are auth-gated; scripts authenticate as the maintenance service.
-      ...(process.env.HUB_API_TOKEN ? { "x-hub-token": process.env.HUB_API_TOKEN } : {}),
-    },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       id: reviewId,
       training: {

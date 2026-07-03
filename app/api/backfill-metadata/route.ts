@@ -1,6 +1,5 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { backfillMetadataCanonical, backfillSubScores, backfillPromoTypes, backfillProxyPromoTypes } from "@/lib/reviews-store";
-import { getHubUser, isHubAdmin, forbidden } from "@/lib/hub-auth";
 import { getAllPerformanceRecords } from "@/lib/performance-db";
 import { normalizeCode } from "@/lib/promo-stats";
 import { classifyRowByCartValue } from "@/lib/promo-classify";
@@ -16,9 +15,7 @@ export const maxDuration = 60;
  * Overwrites only on a confident directory match; fills remaining blanks from
  * detection/offer-parse; normalizes the legacy verbose MTA label.
  */
-export async function POST(req: NextRequest) {
-  // Bulk rewrite of publisher/guru/product metadata across ALL reviews — admin-only.
-  if (!isHubAdmin(await getHubUser(req))) return forbidden("Only OxfordHub Admins can run metadata backfills.");
+export async function POST() {
   const result = await backfillMetadataCanonical();
   // Also fill missing sub-score profiles so older reviews can participate in
   // Similar-Promo Outcomes (derived from their stored effectiveness text).

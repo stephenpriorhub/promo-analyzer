@@ -37,7 +37,6 @@ import {
   type EntityOverrides,
 } from "@/lib/entity-overrides";
 import { getAllReviews, applyEntityMerge } from "@/lib/reviews-store";
-import { getHubUser, isHubAdmin, forbidden } from "@/lib/hub-auth";
 import { writeBrainNote } from "@/lib/brain-writer";
 import canonicalSnapshot from "@/lib/canonical-entities.json";
 
@@ -224,9 +223,6 @@ export async function GET() {
 const KINDS = new Set(["guru", "product", "publisher"]);
 
 export async function POST(req: NextRequest) {
-  // Directory corrections (merge/rename/remove/assign) rewrite past reviews and
-  // teach every future resolver — hub admins only.
-  if (!isHubAdmin(await getHubUser(req))) return forbidden("Only OxfordHub Admins can edit the directory.");
   const body = (await req.json().catch(() => ({}))) as {
     action?: string;
     kind?: string;

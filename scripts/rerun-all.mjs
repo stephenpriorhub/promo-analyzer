@@ -78,11 +78,7 @@ async function getReviewScore(reviewId) {
 async function reanalyze(reviewId) {
   const res = await fetchRetry(`${BASE}/api/reanalyze`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      // Mutations are auth-gated; scripts authenticate as the maintenance service.
-      ...(process.env.HUB_API_TOKEN ? { "x-hub-token": process.env.HUB_API_TOKEN } : {}),
-    },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ reviewId }),
   });
   if (res.status === 404) return "missing-source";

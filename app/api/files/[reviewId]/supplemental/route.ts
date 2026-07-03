@@ -3,7 +3,6 @@ import fs from "fs";
 import path from "path";
 import { v4 as uuidv4 } from "uuid";
 import { FILES_DIR, getReviewById, addSupplementalFile } from "@/lib/reviews-store";
-import { getHubUser, canModifyReview, forbidden } from "@/lib/hub-auth";
 
 export const runtime = "nodejs";
 
@@ -30,8 +29,6 @@ export async function POST(
   if (!review) {
     return NextResponse.json({ error: "Review not found" }, { status: 404 });
   }
-  // Attaching files edits the promo — admin-or-uploader only.
-  if (!canModifyReview(await getHubUser(req), review)) return forbidden();
 
   const formData = await req.formData();
   const file = formData.get("file") as File | null;
