@@ -102,14 +102,36 @@ async function buildGraph(): Promise<{ publishers: PublisherGroup[]; unassigned:
       }
     }
   }
-  // Manual assignments override the directory
-  for (const [g, pub] of Object.entries(o.guruPublisher)) guruPub.set(g, canonPublisher(pub));
-  for (const [p, pub] of Object.entries(o.productPublisher)) productPub.set(p, canonPublisher(pub));
-  for (const [p, g] of Object.entries(o.productGuru)) productGuru.set(p, canonGuru(g));
-
   // Universe of names: directory/snapshot ∪ review-used values (aliased)
   const canon = await getCanonicalEntities();
   const reviews = getAllReviews();
+
+  // Review co-occurrence beats the directory seed: what Stephen entered on
+  // analyzed promos (product + gurus) IS the matching — each review is a vote,
+  // the most frequent guru wins the product.
+  const guruVotes = new Map<string, Map<string, { name: string; n: number }>>();
+  for (const r of reviews) {
+    if (!r.product || !(r.gurus ?? []).length) continue;
+    const pk = normKey(canonProduct(r.product));
+    const votes = guruVotes.get(pk) ?? new Map();
+    for (const g0 of r.gurus ?? []) {
+      const g = canonGuru(g0);
+      if (!g || g.startsWith("(")) continue;
+      const v = votes.get(normKey(g)) ?? { name: g, n: 0 };
+      v.n += 1;
+      votes.set(normKey(g), v);
+    }
+    guruVotes.set(pk, votes);
+  }
+  for (const [pk, votes] of guruVotes) {
+    const top = [...votes.values()].sort((a, b) => b.n - a.n || a.name.localeCompare(b.name))[0];
+    if (top) productGuru.set(pk, top.name);
+  }
+
+  // Manual assignments override everything
+  for (const [g, pub] of Object.entries(o.guruPublisher)) guruPub.set(g, canonPublisher(pub));
+  for (const [p, pub] of Object.entries(o.productPublisher)) productPub.set(p, canonPublisher(pub));
+  for (const [p, g] of Object.entries(o.productGuru)) productGuru.set(p, canonGuru(g));
   const guruNames = new Map<string, string>(); // normKey → display
   const productNames = new Map<string, string>();
   const publisherNames = new Map<string, string>();
