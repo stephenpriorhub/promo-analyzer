@@ -47,12 +47,8 @@ const VALID_EXT = new Set([".pdf", ".docx"]);
 const PACE_MS = Number(process.env.PACE_MS ?? 8000);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-// The whole API is auth-gated; scripts authenticate as the maintenance service.
-const AUTH = process.env.HUB_API_TOKEN ? { "x-hub-token": process.env.HUB_API_TOKEN } : {};
-
 // Retry transient server failures (502/503/504/429) with backoff.
-async function fetchRetry(url, opts = {}, tries = 4) {
-  opts = { ...opts, headers: { ...AUTH, ...(opts.headers ?? {}) } };
+async function fetchRetry(url, opts, tries = 4) {
   let last;
   for (let i = 0; i < tries; i++) {
     try {
@@ -87,7 +83,7 @@ function logProgress(filename) {
 }
 
 async function getExistingFilenames() {
-  const res = await fetch(`${BASE}/api/reviews`, { headers: AUTH });
+  const res = await fetch(`${BASE}/api/reviews`);
   if (!res.ok) throw new Error(`GET /api/reviews failed: ${res.status}`);
   const reviews = await res.json();
   return new Set((Array.isArray(reviews) ? reviews : []).map((r) => r.filename));
