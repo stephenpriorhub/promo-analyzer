@@ -93,6 +93,8 @@ export interface SavedReview {
   training?: TrainingData;
   sourceFile?: { filename: string; size: number };
   supplementalFiles?: SupplementalFile[];
+  /** Origin of this review. "packager" = created by The Packager companion app as a draft. */
+  source?: "packager" | null;
 }
 
 export interface AnalysisSections {
@@ -564,6 +566,16 @@ export function stampUploader(
   const idx = reviews.findIndex((r) => r.id === reviewId);
   if (idx === -1) return false;
   reviews[idx].uploadedBy = { id: user.id, email: user.email, name: user.name ?? null };
+  writeReviews(reviews);
+  return true;
+}
+
+/** Set the origin of a review (e.g. "packager" for Packager-created drafts). */
+export function updateReviewSource(reviewId: string, source: "packager" | null): boolean {
+  const reviews = readReviews();
+  const idx = reviews.findIndex((r) => r.id === reviewId);
+  if (idx === -1) return false;
+  reviews[idx].source = source;
   writeReviews(reviews);
   return true;
 }

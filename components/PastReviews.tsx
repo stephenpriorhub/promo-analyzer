@@ -271,6 +271,15 @@ export default function PastReviews({
                         ✓
                       </span>
                     )}
+                    {review.source === "packager" && (
+                      <span
+                        className="shrink-0"
+                        title="Created by The Packager"
+                        aria-label="Created by The Packager"
+                      >
+                        📦
+                      </span>
+                    )}
                     <span className="truncate">{name}</span>
                   </p>
                 )}
