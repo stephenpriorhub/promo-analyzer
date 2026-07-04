@@ -12,6 +12,7 @@
  */
 
 import { getEnv } from "./env";
+import { recordBrainWrite } from "./brain-health";
 import type { PromoLedgerRow } from "./promo-ledger";
 
 /** brain-map live URL (from REGISTRY.md). Overridable via BRAIN_API_URL. */
@@ -66,14 +67,17 @@ export async function postLedgerRow(row: PromoLedgerRow): Promise<BrainApiResult
     if (!res.ok || json.ok === false) {
       const error = json.error ?? `Brain API returned ${res.status}`;
       console.warn(`[brain-api] ledger row write failed (${res.status}): ${error}`);
+      recordBrainWrite(false, `pattern-ledger:${row.promo}`, error);
       return { ok: false, status: res.status, error };
     }
 
     console.log(`[brain-api] appended ledger row for "${row.promo}"`, json.written ?? []);
+    recordBrainWrite(true, `pattern-ledger:${row.promo}`);
     return { ok: true, status: res.status, written: json.written };
   } catch (e) {
     const error = e instanceof Error ? e.message : String(e);
     console.warn(`[brain-api] ledger row write error: ${error}`);
+    recordBrainWrite(false, `pattern-ledger:${row.promo}`, error);
     return { ok: false, error };
   }
 }

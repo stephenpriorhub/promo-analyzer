@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback, useRef, useEffect } from "react";
+import BrainHealth from "@/components/BrainHealth";
 import PromoUploader from "@/components/PromoUploader";
 import AnalysisResults from "@/components/AnalysisResults";
 import PastReviews from "@/components/PastReviews";
@@ -294,6 +295,7 @@ export default function Home() {
         />
 
         <div className="flex items-center gap-2 shrink-0">
+          <BrainHealth />
           <button
             onClick={() =>
               setView((prev) => (prev.type === "lessons" ? { type: "upload" } : { type: "lessons" }))

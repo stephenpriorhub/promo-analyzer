@@ -10,6 +10,7 @@
 
 import fs from "fs";
 import path from "path";
+import { recordBrainWrite } from "./brain-health";
 
 const BRAIN_DIR =
   process.env.BRAIN_DIR ??
@@ -76,6 +77,7 @@ export async function writeBrainNote(
     if (process.env.GITHUB_TOKEN) {
       const existing = await githubGetFile(relPath);
       await githubPutFile(relPath, content, `Add promo analysis: ${safeTitle}`, existing?.sha);
+      recordBrainWrite(true, `note:${safeTitle}`);
       return { ok: true, path: `github:${BRAIN_GITHUB_REPO}/${relPath}` };
     }
     // Local fallback
@@ -86,10 +88,12 @@ export async function writeBrainNote(
     }
     fs.mkdirSync(path.dirname(filepath), { recursive: true });
     fs.writeFileSync(filepath, content, "utf-8");
+    recordBrainWrite(true, `note:${safeTitle}`);
     return { ok: true, path: filepath };
   } catch (err) {
     const error = err instanceof Error ? err.message : "Write failed";
     console.warn(`[brain-writer] note write failed (${relPath}): ${error}`);
+    recordBrainWrite(false, `note:${safeTitle}`, error);
     return { ok: false, error };
   }
 }
@@ -130,10 +134,17 @@ export async function appendPerformanceLedgerRows(
   try {
     if (process.env.GITHUB_TOKEN) {
       const existing = await githubGetFile(LEDGER_REL_PATH);
-      if (!existing) return { ok: false, error: "Performance Ledger.md not found in vault repo" };
+      if (!existing) {
+        recordBrainWrite(false, "performance-ledger", "Performance Ledger.md not found in vault repo (token dead or file missing)");
+        return { ok: false, error: "Performance Ledger.md not found in vault repo" };
+      }
       const next = spliceRows(existing.content, rows);
-      if (!next) return { ok: false, error: "Ledger splice markers missing" };
+      if (!next) {
+        recordBrainWrite(false, "performance-ledger", "Ledger splice markers missing");
+        return { ok: false, error: "Ledger splice markers missing" };
+      }
       await githubPutFile(LEDGER_REL_PATH, next, `Performance ledger: +${rows.length} row(s)`, existing.sha);
+      recordBrainWrite(true, "performance-ledger");
       return { ok: true };
     }
     const filepath = path.join(BRAIN_VAULT_ROOT, LEDGER_REL_PATH);
@@ -145,6 +156,7 @@ export async function appendPerformanceLedgerRows(
   } catch (err) {
     const error = err instanceof Error ? err.message : "Ledger append failed";
     console.warn(`[brain-writer] ledger append failed: ${error}`);
+    recordBrainWrite(false, "performance-ledger", error);
     return { ok: false, error };
   }
 }
