@@ -26,6 +26,7 @@ export const SUBFOLDER_MAP: Record<string, string> = {
   "promo-analysis-tool": "Resources/Promo Analysis/Promo Analysis Tool",
   "promo-intelligence": "Resources/Promo Analysis/Promo Intelligence",
   performance: "Resources/Promo Analysis/Performance",
+  knowledge: "Resources/Promo Analysis/Knowledge",
 };
 
 function resolveRelPath(subfolder: string | undefined, safeTitle: string): string {

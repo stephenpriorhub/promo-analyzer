@@ -8,6 +8,7 @@ import { calculateFKScore, type FKScore } from "@/lib/fk-score";
 import { SYSTEM_PROMPT, buildCalibrationBlock, buildModalityBlock } from "@/lib/build-prompt";
 import { saveReview, getTrainingExamples, updateSourceFileMeta, stampUploader, FILES_DIR, type AnalysisSections } from "@/lib/reviews-store";
 import { getHubUser } from "@/lib/hub-auth";
+import { extractCorpusKnowledge } from "@/lib/corpus-extract";
 import { getAllLessons, buildLearningBlock } from "@/lib/learning-kb";
 import { loadBrainContext, buildBrainContextBlock, loadPublishingDirectory, buildDirectoryBlock, matchDirectoryEntities, buildDirectiveBlock, loadMarketIntelligence, buildIndustrySignalsBlock, detectGuru, detectPublisher } from "@/lib/brain-reader";
 import { parsePromoIntel, buildIntelNote, intelNoteTitle } from "@/lib/promo-intel";
@@ -209,6 +210,27 @@ export async function POST(req: NextRequest) {
           );
 
           if (hubUser) stampUploader(saved.id, hubUser);
+
+          // Fire-and-forget: mine the copy for the knowledge corpus (facts,
+          // voice, style) — the education layer, distinct from scoring.
+          {
+            const corpusText =
+              extracted.type === "text"
+                ? extracted.content
+                : extracted.type === "pdf_raw"
+                  ? extracted.textForFK ?? ""
+                  : "";
+            if (!skipBrain && corpusText.trim()) {
+              void extractCorpusKnowledge({
+                reviewId: saved.id,
+                promoTitle: saved.displayName ?? saved.filename.replace(/\.[^.]+$/, ""),
+                fullText: corpusText,
+                gurus: saved.gurus ?? [],
+                publisher: saved.publisher ?? null,
+                product: saved.product ?? null,
+              }).then((r) => console.log("[corpus]", saved.id, r.ok ? `+${r.factsNew} facts, ${r.passages} passages` : r.error));
+            }
+          }
 
           // Save original source file to disk
           try {
