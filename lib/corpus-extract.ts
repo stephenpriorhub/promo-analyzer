@@ -48,7 +48,7 @@ const CORPUS_TOOL: Anthropic.Tool = {
             speaker: { type: "string", enum: ["guru", "host", "narrator"], description: "Who says/writes this. Voice passages are stored only when 'guru'." },
             guruName: { type: "string", description: "Which guru's voice this is (their name). Empty string if speaker is not a guru." },
             topics: { type: "array", items: { type: "string" } },
-            quality: { type: "integer", minimum: 1, maximum: 5, description: "How exemplary of the guru's craft/voice (5 = signature-quality)." },
+            quality: { type: "integer", description: "1-5: how exemplary of the guru's craft/voice (5 = signature-quality)." },
           },
           required: ["type", "quote", "speaker", "guruName", "topics", "quality"],
         },
@@ -109,6 +109,11 @@ Skip: legal boilerplate, disclaimers, order-form mechanics, generic filler. Qual
 ## Copy chunk
 {CHUNK}`;
 
+// The API rejects minimum/maximum on integer tool properties, so the 1-5
+// bound lives here instead of in the CORPUS_TOOL schema.
+const clampQuality = (q: number | undefined) =>
+  Math.min(5, Math.max(1, Math.round(q ?? 3)));
+
 /**
  * Vision path for scanned/visual PDFs with no text layer (publisher directive
  * 2026-07-04: "those 15 should still be scanned"). The PDF is uploaded via the
@@ -166,7 +171,7 @@ export async function extractCorpusKnowledgeFromPdf(params: {
     };
     const passages: ExtractedPassage[] = (input.passages ?? [])
       .filter((p) => p.speaker === "guru" && p.guruName?.trim())
-      .map((p) => ({ type: p.type, quote: p.quote, guru: canonicalGuruName(p.guruName), topics: p.topics ?? [], quality: p.quality ?? 3 }));
+      .map((p) => ({ type: p.type, quote: p.quote, guru: canonicalGuruName(p.guruName), topics: p.topics ?? [], quality: clampQuality(p.quality) }));
     const facts: ExtractedFact[] = (input.facts ?? []).map((f) => ({
       ...f,
       subject: f.subjectKind === "guru" ? canonicalGuruName(f.subject) : f.subject,
@@ -269,7 +274,7 @@ export async function extractCorpusKnowledge(params: {
           quote: p.quote,
           guru: canonicalGuruName(p.guruName),
           topics: p.topics ?? [],
-          quality: p.quality ?? 3,
+          quality: clampQuality(p.quality),
         });
       }
       for (const f of input.facts ?? []) {
