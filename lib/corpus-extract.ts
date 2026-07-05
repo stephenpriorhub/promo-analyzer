@@ -109,6 +109,96 @@ Skip: legal boilerplate, disclaimers, order-form mechanics, generic filler. Qual
 ## Copy chunk
 {CHUNK}`;
 
+/**
+ * Vision path for scanned/visual PDFs with no text layer (publisher directive
+ * 2026-07-04: "those 15 should still be scanned"). The PDF is uploaded via the
+ * Files API — the same mechanism the scoring analysis uses — and read visually
+ * in one pass. Quotes are the model's transcription of what it reads on the
+ * page; the speaker rule applies unchanged.
+ */
+export async function extractCorpusKnowledgeFromPdf(params: {
+  reviewId: string;
+  promoTitle: string;
+  pdfBuffer: Buffer;
+  gurus: string[];
+  publisher: string | null;
+  product: string | null;
+}): Promise<CorpusExtractResult> {
+  const { reviewId, promoTitle, pdfBuffer, gurus, publisher, product } = params;
+  const client = new Anthropic({ apiKey: getEnv("ANTHROPIC_API_KEY") });
+  let fileId: string | null = null;
+  try {
+    const uploaded = await client.beta.files.upload({
+      file: new File([Uint8Array.from(pdfBuffer)], "promo.pdf", { type: "application/pdf" }),
+    });
+    fileId = uploaded.id;
+    const prompt = PROMPT
+      .replace("{TITLE}", promoTitle)
+      .replace("{GURUS}", gurus.join(", ") || "unknown")
+      .replace("{PUBLISHER}", publisher ?? "unknown")
+      .replace("{PRODUCT}", product ?? "unknown")
+      .replace("{I}", "1")
+      .replace("{N}", "1")
+      .replace("{CHUNK}", "(the promo is the attached PDF — read it in full, transcribe quotes exactly as printed)");
+    const msg = await client.beta.messages.create({
+      model: EXTRACTION_MODEL,
+      betas: ["files-api-2025-04-14"],
+      output_config: { effort: "low" },
+      max_tokens: 16384,
+      tools: [CORPUS_TOOL as Anthropic.Beta.BetaTool],
+      tool_choice: { type: "tool", name: "record_knowledge" },
+      messages: [
+        {
+          role: "user",
+          content: [
+            { type: "document", source: { type: "file", file_id: fileId } },
+            { type: "text", text: prompt },
+          ],
+        },
+      ],
+    });
+    const tu = msg.content.find((b): b is Anthropic.Beta.BetaToolUseBlock => b.type === "tool_use");
+    const input = (tu?.input ?? {}) as {
+      sourceFormat?: string;
+      passages?: Array<{ type: string; quote: string; speaker: string; guruName: string; topics: string[]; quality: number }>;
+      facts?: Array<{ subjectKind: string; subject: string; fact: string; quote: string; backupType: string; statedBy: string; topics: string[] }>;
+      styleNotes?: Array<{ guruName: string; note: string }>;
+    };
+    const passages: ExtractedPassage[] = (input.passages ?? [])
+      .filter((p) => p.speaker === "guru" && p.guruName?.trim())
+      .map((p) => ({ type: p.type, quote: p.quote, guru: canonicalGuruName(p.guruName), topics: p.topics ?? [], quality: p.quality ?? 3 }));
+    const facts: ExtractedFact[] = (input.facts ?? []).map((f) => ({
+      ...f,
+      subject: f.subjectKind === "guru" ? canonicalGuruName(f.subject) : f.subject,
+      topics: f.topics ?? [],
+    }));
+    const style = (input.styleNotes ?? [])
+      .filter((s) => s.guruName?.trim())
+      .map((s) => ({ guru: canonicalGuruName(s.guruName), note: s.note }));
+    const counts = storeExtraction(
+      {
+        reviewId,
+        promoTitle,
+        guru: gurus[0] ? canonicalGuruName(gurus[0]) : null,
+        publisher,
+        product,
+        sourceFormat: input.sourceFormat === "transcript" ? "transcript" : "visual-pdf",
+        model: EXTRACTION_MODEL,
+      },
+      passages,
+      facts,
+      style
+    );
+    return { ok: true, sourceFormat: "visual-pdf", ...counts };
+  } catch (err) {
+    const error = err instanceof Error ? err.message : "pdf corpus extraction failed";
+    console.warn(`[corpus] pdf extraction failed for ${reviewId}: ${error}`);
+    return { ok: false, passages: 0, factsNew: 0, factsSeenAgain: 0, styleNotes: 0, sourceFormat: "visual-pdf", error };
+  } finally {
+    if (fileId) void client.beta.files.delete(fileId).catch(() => {});
+  }
+}
+
 export interface CorpusExtractResult {
   ok: boolean;
   passages: number;
