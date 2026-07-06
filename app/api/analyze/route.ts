@@ -15,6 +15,7 @@ import { parsePromoIntel, buildIntelNote, intelNoteTitle } from "@/lib/promo-int
 import { buildLedgerRowFromReview } from "@/lib/promo-ledger";
 import { postLedgerRow } from "@/lib/brain-api";
 import { getEnv } from "@/lib/env";
+import { recordBrainWrite } from "@/lib/brain-health";
 
 export const runtime = "nodejs";
 export const maxDuration = 90; // lowered from 180 to shrink the concurrent-request window (memory pressure / OOM mitigation)
@@ -301,9 +302,18 @@ export async function POST(req: NextRequest) {
               .filter((l) => l !== undefined)
               .join("\n");
 
+            // Internal self-fetch: authenticate with the service token — the
+            // API-wide auth proxy 401s cookieless server-to-self calls otherwise.
+            const internalHeaders: Record<string, string> = {
+              "Content-Type": "application/json",
+              ...(process.env.HUB_API_TOKEN
+                ? { "x-hub-token": process.env.HUB_API_TOKEN }
+                : {}),
+            };
+
             fetch(`${baseUrl}/api/brain`, {
               method: "POST",
-              headers: { "Content-Type": "application/json" },
+              headers: internalHeaders,
               body: JSON.stringify({
                 title: promoTitle,
                 content: brainContent,
@@ -316,12 +326,22 @@ export async function POST(req: NextRequest) {
                 } else {
                   r.json()
                     .catch(() => ({}))
-                    .then((e) =>
-                      console.warn(`[brain] Auto-save failed for ${saved.id}:`, e)
-                    );
+                    .then((e) => {
+                      console.warn(`[brain] Auto-save failed for ${saved.id}:`, e);
+                      // Record here too: a proxy-level 401 never reaches the
+                      // /api/brain route, so route-side recording misses it.
+                      recordBrainWrite(
+                        false,
+                        `auto-save:${saved.id}`,
+                        (e as { error?: string })?.error ?? `HTTP ${r.status}`
+                      );
+                    });
                 }
               })
-              .catch((e) => console.warn(`[brain] Auto-save error for ${saved.id}:`, e));
+              .catch((e) => {
+                console.warn(`[brain] Auto-save error for ${saved.id}:`, e);
+                recordBrainWrite(false, `auto-save:${saved.id}`, e instanceof Error ? e.message : String(e));
+              });
 
             // Fire-and-forget: write structured promo intelligence to the vault's
             // Promo Intelligence inbox for the Brain Agent to review and merge.
@@ -351,7 +371,7 @@ export async function POST(req: NextRequest) {
               );
               fetch(`${baseUrl}/api/brain`, {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
+                headers: internalHeaders,
                 body: JSON.stringify({
                   title: intelNoteTitle(promoTitle),
                   content: intelContent,
@@ -359,7 +379,14 @@ export async function POST(req: NextRequest) {
                 }),
               })
                 .then((r) => {
-                  if (r.ok) console.log(`[brain] Saved promo intel for ${saved.id}`);
+                  if (r.ok) {
+                    console.log(`[brain] Saved promo intel for ${saved.id}`);
+                  } else {
+                    console.warn(
+                      `[brain] Intel save failed for ${saved.id}: HTTP ${r.status}`
+                    );
+                    recordBrainWrite(false, `promo-intel:${saved.id}`, `HTTP ${r.status}`);
+                  }
                 })
                 .catch((e) => console.warn(`[brain] Intel save error for ${saved.id}:`, e));
             }
