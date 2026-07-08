@@ -80,6 +80,7 @@ export default function PastReviews({
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
+  const [copiedId, setCopiedId] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const [fPublisher, setFPublisher] = useState("");
   const [fProduct, setFProduct] = useState("");
@@ -123,6 +124,18 @@ export default function PastReviews({
     e.stopPropagation();
     await fetch(`/api/reviews?id=${id}`, { method: "DELETE" });
     setReviews((prev) => prev.filter((r) => r.id !== id));
+  }
+
+  async function handleCopyLink(id: string, e: React.MouseEvent) {
+    e.stopPropagation();
+    const url = `${window.location.origin}/?review=${id}`;
+    try {
+      await navigator.clipboard.writeText(url);
+    } catch {
+      window.prompt("Copy this analysis link:", url);
+    }
+    setCopiedId(id);
+    setTimeout(() => setCopiedId((cur) => (cur === id ? null : cur)), 2000);
   }
 
   function startEdit(review: SavedReview, e: React.MouseEvent) {
@@ -299,6 +312,15 @@ export default function PastReviews({
                     </span>
                   ) : null;
                 })()}
+                {/* Copy share link — available to anyone who can see the promo */}
+                <button
+                  onClick={(e) => handleCopyLink(review.id, e)}
+                  className={`transition-all text-xs px-1 ${copiedId === review.id ? "opacity-100 text-green-600" : "opacity-0 group-hover:opacity-100 text-gray-400 hover:text-blue-500"}`}
+                  title="Copy shareable link to this analysis"
+                  aria-label="Copy shareable link"
+                >
+                  {copiedId === review.id ? "✓" : "🔗"}
+                </button>
                 {/* Rename/delete: admins or the promo's uploader only (server enforces too) */}
                 {canModifyReview(hubUser, review) && (
                   <>

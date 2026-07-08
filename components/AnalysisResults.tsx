@@ -148,6 +148,7 @@ export default function AnalysisResults({
   const [localDisplayName, setLocalDisplayName] = useState<string | null>(displayName ?? null);
   const [reanalyzing, setReanalyzing] = useState(false);
   const [reanalyzeError, setReanalyzeError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
 
   // Match the sidebar label format: displayName if set, else filename without extension
   const shownTitle = localDisplayName ?? filename.replace(/\.[^.]+$/, "");
@@ -177,6 +178,19 @@ export default function AnalysisResults({
 
   const completed = STEPS.filter((s) => sections[s.key] !== "").length;
   const pct = Math.round((completed / STEPS.length) * 100);
+
+  async function handleCopyLink() {
+    if (!reviewId) return;
+    const url = `${window.location.origin}/?review=${reviewId}`;
+    try {
+      await navigator.clipboard.writeText(url);
+    } catch {
+      // Clipboard API unavailable (non-HTTPS / older browser) — fall back to a prompt.
+      window.prompt("Copy this analysis link:", url);
+    }
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
 
   async function handleExport() {
     setExporting(true);
@@ -329,6 +343,18 @@ export default function AnalysisResults({
         </div>
         {!streaming && (
           <div className="flex items-center gap-2 flex-wrap w-full sm:w-auto">
+            {reviewId && (
+              <button
+                onClick={handleCopyLink}
+                className="flex items-center gap-2 px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-medium border transition-colors"
+                style={{ borderColor: NAVY_BORDER, color: copied ? "#15803d" : NAVY, background: copied ? "#dcfce7" : NAVY_BG }}
+                onMouseEnter={e => !copied && (e.currentTarget.style.background = "#dce8f8")}
+                onMouseLeave={e => !copied && (e.currentTarget.style.background = NAVY_BG)}
+                title="Copy a shareable link to this analysis"
+              >
+                {copied ? "✓ Copied!" : "🔗 Copy link"}
+              </button>
+            )}
             {reviewId && (
               <button
                 onClick={handleReanalyze}
