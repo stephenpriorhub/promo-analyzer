@@ -57,7 +57,7 @@ export async function postLedgerRow(row: PromoLedgerRow): Promise<BrainApiResult
       body: JSON.stringify({ kind: "promo-ledger-row", row }),
     });
 
-    let json: { ok?: boolean; written?: string[]; error?: string } = {};
+    let json: { ok?: boolean; written?: string[]; error?: string; gitError?: string } = {};
     try {
       json = await res.json();
     } catch {
@@ -65,7 +65,10 @@ export async function postLedgerRow(row: PromoLedgerRow): Promise<BrainApiResult
     }
 
     if (!res.ok || json.ok === false) {
-      const error = json.error ?? `Brain API returned ${res.status}`;
+      // The Brain API returns git failures in `gitError` (see brain-map
+      // commitAndReport), not `error` — surface it so the health watchdog
+      // records the real cause instead of a bare "Brain API returned 502".
+      const error = json.error ?? json.gitError ?? `Brain API returned ${res.status}`;
       console.warn(`[brain-api] ledger row write failed (${res.status}): ${error}`);
       recordBrainWrite(false, `pattern-ledger:${row.promo}`, error);
       return { ok: false, status: res.status, error };
