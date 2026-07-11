@@ -85,10 +85,24 @@ export async function POST(req: NextRequest) {
 
   const message = await client.messages.create({
     model: ANALYSIS_MODEL,
-    max_tokens: 1500,
+    // Sonnet 5 runs adaptive thinking by default (thinking omitted), so the
+    // budget must cover the thinking block AND the ~600-token re-score output.
+    // The old 1500 was a pre-Sonnet-5 value that thinking could consume whole,
+    // leaving no visible text.
+    max_tokens: 8000,
     messages: [{ role: "user", content: prompt }],
   });
 
-  const text = message.content[0].type === "text" ? message.content[0].text.trim() : "";
+  // Sonnet 5 emits a leading `thinking` block, so content[0] is NOT the answer.
+  // Find the first text block explicitly instead of assuming index 0.
+  const textBlock = message.content.find((b) => b.type === "text");
+  const text = textBlock && textBlock.type === "text" ? textBlock.text.trim() : "";
+  if (!text) {
+    console.error("[reevaluate] no text block in response", {
+      stopReason: message.stop_reason,
+      blockTypes: message.content.map((b) => b.type),
+    });
+    return NextResponse.json({ error: "Re-evaluation produced no text output." }, { status: 502 });
+  }
   return NextResponse.json({ effectiveness: text });
 }

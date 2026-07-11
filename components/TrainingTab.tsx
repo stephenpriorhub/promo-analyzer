@@ -142,6 +142,7 @@ export default function TrainingTab({
   const [saving, setSaving] = useState(false);
   const [reevaluating, setReevaluating] = useState(false);
   const [reevalResult, setReevalResult] = useState<string | null>(null);
+  const [reevalError, setReevalError] = useState<string | null>(null);
   const [applied, setApplied] = useState(false);
 
   const hasScore = performanceScore !== null || myScore !== null;
@@ -178,6 +179,7 @@ export default function TrainingTab({
     if (!hasScore) return;
     setReevaluating(true);
     setReevalResult(null);
+    setReevalError(null);
     setApplied(false);
     try {
       const res = await fetch("/api/reevaluate", {
@@ -192,10 +194,14 @@ export default function TrainingTab({
           isBestPerformer,
         }),
       });
-      const json = await res.json();
+      const json = await res.json().catch(() => ({}));
       if (res.ok && json.effectiveness) {
         setReevalResult(json.effectiveness);
+      } else {
+        setReevalError(json.error || "Re-evaluation failed. Please try again.");
       }
+    } catch {
+      setReevalError("Re-evaluation failed — network error. Please try again.");
     } finally {
       setReevaluating(false);
     }
@@ -425,6 +431,13 @@ export default function TrainingTab({
           </span>
         )}
       </div>
+
+      {/* Re-evaluate error */}
+      {reevalError && (
+        <div className="rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {reevalError}
+        </div>
+      )}
 
       {/* Re-evaluate result preview */}
       {reevalResult && (

@@ -65,6 +65,63 @@ async function githubPutFile(relPath: string, content: string, message: string, 
   }
 }
 
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * The Contents API commits to the default branch; when two commits race the
+ * branch ref GitHub rejects the loser with 409 "is at <X> but expected <Y>"
+ * (also "does not match"). Every analysis fires several writes back-to-back
+ * (note + intel + ledger) and bulk backfills fire many more, so this is the
+ * dominant brain-write failure — not a dead token.
+ */
+function isRefConflict(err: unknown): boolean {
+  const m = (err instanceof Error ? err.message : String(err)).toLowerCase();
+  return m.includes("but expected") || m.includes("does not match") || m.includes("409");
+}
+
+/**
+ * Serialize every Contents API write to the brain repo within this process so
+ * the app's own bursts don't race each other. A separate backfill *script*
+ * hitting the deployed API runs in this same process, so it shares the queue;
+ * only writes from a different replica can still collide — the retry covers those.
+ */
+let writeChain: Promise<unknown> = Promise.resolve();
+function serialize<T>(fn: () => Promise<T>): Promise<T> {
+  const run = writeChain.then(fn, fn);
+  writeChain = run.then(
+    () => undefined,
+    () => undefined
+  );
+  return run;
+}
+
+/**
+ * PUT a file, retrying on the branch-ref 409. `build` is re-invoked each attempt
+ * with the file's *current* state, so callers that splice into existing content
+ * (the ledger) re-splice against fresh data before retrying. Non-conflict errors
+ * (dead token, missing markers) throw immediately without burning retries.
+ */
+async function githubPutWithRetry(
+  relPath: string,
+  build: (existing: { sha: string; content: string } | null) => { content: string; message: string },
+  attempts = 5
+): Promise<void> {
+  let lastErr: unknown = new Error("GitHub write failed");
+  for (let i = 0; i < attempts; i++) {
+    const existing = await githubGetFile(relPath);
+    const { content, message } = build(existing);
+    try {
+      await githubPutFile(relPath, content, message, existing?.sha);
+      return;
+    } catch (err) {
+      lastErr = err;
+      if (!isRefConflict(err) || i === attempts - 1) throw err;
+      await sleep(250 * (i + 1)); // linear backoff; next loop re-fetches the fresh sha
+    }
+  }
+  throw lastErr;
+}
+
 /** Write (create or overwrite) a note in an allowlisted vault subfolder. */
 export async function writeBrainNote(
   title: string,
@@ -76,8 +133,9 @@ export async function writeBrainNote(
   const relPath = resolveRelPath(subfolder, safeTitle);
   try {
     if (process.env.GITHUB_TOKEN) {
-      const existing = await githubGetFile(relPath);
-      await githubPutFile(relPath, content, `Add promo analysis: ${safeTitle}`, existing?.sha);
+      await serialize(() =>
+        githubPutWithRetry(relPath, () => ({ content, message: `Add promo analysis: ${safeTitle}` }))
+      );
       recordBrainWrite(true, `note:${safeTitle}`);
       return { ok: true, path: `github:${BRAIN_GITHUB_REPO}/${relPath}` };
     }
@@ -134,17 +192,16 @@ export async function appendPerformanceLedgerRows(
   if (rows.length === 0) return { ok: true };
   try {
     if (process.env.GITHUB_TOKEN) {
-      const existing = await githubGetFile(LEDGER_REL_PATH);
-      if (!existing) {
-        recordBrainWrite(false, "performance-ledger", "Performance Ledger.md not found in vault repo (token dead or file missing)");
-        return { ok: false, error: "Performance Ledger.md not found in vault repo" };
-      }
-      const next = spliceRows(existing.content, rows);
-      if (!next) {
-        recordBrainWrite(false, "performance-ledger", "Ledger splice markers missing");
-        return { ok: false, error: "Ledger splice markers missing" };
-      }
-      await githubPutFile(LEDGER_REL_PATH, next, `Performance ledger: +${rows.length} row(s)`, existing.sha);
+      // build re-splices against the *current* ledger on every retry, so a
+      // racing append never clobbers rows another writer just added.
+      await serialize(() =>
+        githubPutWithRetry(LEDGER_REL_PATH, (existing) => {
+          if (!existing) throw new Error("Performance Ledger.md not found in vault repo");
+          const next = spliceRows(existing.content, rows);
+          if (!next) throw new Error("Ledger splice markers missing");
+          return { content: next, message: `Performance ledger: +${rows.length} row(s)` };
+        })
+      );
       recordBrainWrite(true, "performance-ledger");
       return { ok: true };
     }

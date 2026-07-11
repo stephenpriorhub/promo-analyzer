@@ -244,11 +244,16 @@ export async function POST(req: NextRequest) {
   const client = new Anthropic({ apiKey: getEnv("ANTHROPIC_API_KEY") });
   const message = await client.messages.create({
     model: ANALYSIS_MODEL,
-    max_tokens: 400,
+    // Sonnet 5 runs adaptive thinking by default; give it room beyond the tiny
+    // JSON payload so the thinking block doesn't crowd out the answer.
+    max_tokens: 2000,
     messages: [{ role: "user", content: prompt }],
   });
 
-  const raw = message.content[0].type === "text" ? message.content[0].text.trim() : "{}";
+  // Sonnet 5 emits a leading `thinking` block — find the text block, don't
+  // assume content[0] (which was silently falling back to "{}" → no tags).
+  const textBlock = message.content.find((b) => b.type === "text");
+  const raw = textBlock && textBlock.type === "text" ? textBlock.text.trim() : "{}";
   let structured: Record<string, unknown>;
   try {
     const jsonStart = raw.indexOf("{");
