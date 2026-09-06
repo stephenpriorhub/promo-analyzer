@@ -153,6 +153,11 @@ export interface SourceCopyParams {
   text?: string;
   /** Raw PDF for the vision path (scanned/visual promos with no text layer). */
   pdfBuffer?: Buffer;
+  /**
+   * Set when the text extractor covered only the first N pages of a long PDF —
+   * surfaced on the note so a partial copy is never mistaken for the whole promo.
+   */
+  pageNote?: string;
 }
 
 export interface SourceCopyResult {
@@ -213,6 +218,7 @@ export function buildSourceNote(
     truncatedByCap
       ? "> [!warning] Source exceeded the note size cap and was truncated here. The complete file remains on the analyzer volume.\n"
       : null,
+    params.pageNote ? `> [!warning] ${params.pageNote} The remaining pages are not in this note.\n` : null,
     "---",
     "",
     body,

@@ -339,6 +339,7 @@ export async function POST(req: NextRequest) {
                 effectivenessScore: saved.effectivenessScore,
                 text: sourceText,
                 pdfBuffer: sourceText.trim() ? undefined : buffer,
+                pageNote: (extracted as { pageNote?: string }).pageNote,
               }).then((r) =>
                 console.log(
                   "[source-copy]",

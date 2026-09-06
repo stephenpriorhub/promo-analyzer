@@ -62,6 +62,7 @@ export async function POST(req: NextRequest) {
     effectivenessScore: review.effectivenessScore,
     text: src.text,
     pdfBuffer: src.pdf,
+    pageNote: src.pageNote,
   });
   return NextResponse.json(result);
 }

@@ -18,6 +18,8 @@ export interface StoredSource {
   pdf?: Buffer;
   /** Extension of the stored file, for provenance in notes. */
   ext?: "docx" | "pdf";
+  /** Set when text extraction covered only the first N pages of a long PDF. */
+  pageNote?: string;
   why?: string;
 }
 
@@ -29,9 +31,10 @@ export async function readStoredSource(reviewId: string): Promise<StoredSource> 
     if (!fs.existsSync(p)) continue;
     const buffer = fs.readFileSync(p);
     const extracted = await extractFile(buffer, `source.${ext}`);
-    if (extracted.type === "text" && extracted.content?.trim()) return { text: extracted.content, ext };
+    if (extracted.type === "text" && extracted.content?.trim())
+      return { text: extracted.content, ext, pageNote: extracted.pageNote };
     if (extracted.type === "pdf_raw") {
-      if (extracted.textForFK?.trim()) return { text: extracted.textForFK, ext };
+      if (extracted.textForFK?.trim()) return { text: extracted.textForFK, ext, pageNote: extracted.pageNote };
       // Scanned/visual PDF — no text layer; hand back the buffer to be read visually.
       return { pdf: buffer, ext };
     }
