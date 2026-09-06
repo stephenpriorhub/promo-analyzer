@@ -52,10 +52,30 @@ for (const r of reviews) {
       method: "POST",
       headers: { "Content-Type": "application/json", ...AUTH },
       body: JSON.stringify({ reviewId: r.id }),
-      signal: AbortSignal.timeout(15 * 60 * 1000),
+      signal: AbortSignal.timeout(2 * 60 * 1000),
     });
-    const j = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(j.error ?? `HTTP ${res.status}`);
+    let j = await res.json().catch(() => ({}));
+    if (!res.ok && res.status !== 202) throw new Error(j.error ?? `HTTP ${res.status}`);
+
+    // Vision transcriptions run in the background (a synchronous request dies
+    // at the platform edge). Poll until the job lands.
+    if (j.queued) {
+      process.stdout.write("(transcribing");
+      const deadline = Date.now() + 40 * 60 * 1000;
+      let job;
+      for (;;) {
+        await sleep(20000);
+        process.stdout.write(".");
+        const probe = await fetch(`${BASE}/api/source-copy?reviewId=${r.id}`, { headers: AUTH })
+          .then((p) => p.json())
+          .catch(() => ({}));
+        job = probe.job;
+        if (job && job.status !== "running") break;
+        if (Date.now() > deadline) { job = { status: "error", error: "timed out waiting for transcription" }; break; }
+      }
+      process.stdout.write(") ");
+      j = job.status === "done" ? job.result : { ok: false, error: job.error ?? "transcription failed" };
+    }
     if (j.skipped) {
       console.log(`SKIP (${j.why})`);
       fs.appendFileSync(PROGRESS, `${r.id}\n`);
