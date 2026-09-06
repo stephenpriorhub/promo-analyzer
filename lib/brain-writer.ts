@@ -27,6 +27,7 @@ export const SUBFOLDER_MAP: Record<string, string> = {
   "promo-intelligence": "Resources/Promo Analysis/Promo Intelligence",
   performance: "Resources/Promo Analysis/Performance",
   knowledge: "Resources/Promo Analysis/Knowledge",
+  "source-copy": "Resources/Promo Analysis/Source Copy",
 };
 
 function resolveRelPath(subfolder: string | undefined, safeTitle: string): string {
@@ -74,6 +75,9 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
  * (note + intel + ledger) and bulk backfills fire many more, so this is the
  * dominant brain-write failure — not a dead token.
  */
+/** Thrown by a `build` callback to abort a write that turned out to be a no-op. */
+class SkipWrite extends Error {}
+
 function isRefConflict(err: unknown): boolean {
   const m = (err instanceof Error ? err.message : String(err)).toLowerCase();
   return m.includes("but expected") || m.includes("does not match") || m.includes("409");
@@ -154,6 +158,66 @@ export async function writeBrainNote(
     console.warn(`[brain-writer] note write failed (${relPath}): ${error}`);
     recordBrainWrite(false, `note:${safeTitle}`, error);
     return { ok: false, error };
+  }
+}
+
+/**
+ * Insert a single line into an existing note, once. Used to hang the
+ * `**Full Copy:** [[Promo Copy - X]]` link off an analysis note without
+ * rewriting the analysis itself (which the analyzer regenerates only on
+ * re-teach). Idempotent: a note that already carries the line is left alone.
+ *
+ * The line goes directly after the first line matching `afterRe`, else after
+ * the H1, else at the top of the body. Missing notes are not an error — a
+ * promo can be taught before its analysis note lands.
+ */
+export async function addLineToBrainNote(
+  title: string,
+  subfolder: string,
+  line: string,
+  afterRe: RegExp
+): Promise<{ ok: boolean; added: boolean; error?: string }> {
+  const safeTitle = title.replace(/[/\\?%*:|"<>]/g, "-").trim();
+  if (!safeTitle) return { ok: false, added: false, error: "Invalid title" };
+  const relPath = resolveRelPath(subfolder, safeTitle);
+
+  const splice = (content: string): string | null => {
+    if (content.includes(line.trim())) return null; // already linked
+    const lines = content.split("\n");
+    let at = lines.findIndex((l) => afterRe.test(l));
+    if (at === -1) at = lines.findIndex((l) => l.startsWith("# "));
+    if (at === -1) at = 0;
+    lines.splice(at + 1, 0, line);
+    return lines.join("\n");
+  };
+
+  try {
+    if (process.env.GITHUB_TOKEN) {
+      let added = false;
+      await serialize(() =>
+        githubPutWithRetry(relPath, (existing) => {
+          if (!existing) throw new Error("note not found");
+          const next = splice(existing.content);
+          if (next === null) throw new SkipWrite();
+          added = true;
+          return { content: next, message: `Link source copy: ${safeTitle}` };
+        })
+      ).catch((e) => {
+        if (e instanceof SkipWrite) return;
+        throw e;
+      });
+      return { ok: true, added };
+    }
+    const filepath = path.join(BRAIN_VAULT_ROOT, relPath);
+    if (!fs.existsSync(filepath)) return { ok: false, added: false, error: "note not found" };
+    const next = splice(fs.readFileSync(filepath, "utf-8"));
+    if (next === null) return { ok: true, added: false };
+    fs.writeFileSync(filepath, next, "utf-8");
+    return { ok: true, added: true };
+  } catch (err) {
+    const error = err instanceof Error ? err.message : "link write failed";
+    console.warn(`[brain-writer] link insert failed (${relPath}): ${error}`);
+    return { ok: false, added: false, error };
   }
 }
 

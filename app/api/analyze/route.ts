@@ -16,6 +16,7 @@ import { buildLedgerRowFromReview } from "@/lib/promo-ledger";
 import { postLedgerRow } from "@/lib/brain-api";
 import { getEnv } from "@/lib/env";
 import { writeBrainNote } from "@/lib/brain-writer";
+import { writeSourceCopyNote, sourceNoteTitle } from "@/lib/promo-source";
 
 export const runtime = "nodejs";
 export const maxDuration = 90; // lowered from 180 to shrink the concurrent-request window (memory pressure / OOM mitigation)
@@ -264,6 +265,18 @@ export async function POST(req: NextRequest) {
             if (saved.product) linkLines.push(`- **Product:** [[${saved.product}]]`);
             if (saved.promoCode) linkLines.push(`- **Creative Code:** ${saved.promoCode}`);
 
+            // The promo's full copy gets its own vault note (publisher directive
+            // 2026-09-06). Link it from the analysis note when there is a source
+            // to write — text layer, or a scanned PDF we transcribe with vision.
+            const sourceText =
+              extracted.type === "text"
+                ? extracted.content
+                : extracted.type === "pdf_raw"
+                  ? extracted.textForFK ?? ""
+                  : "";
+            const hasSource = Boolean(sourceText.trim()) || extracted.type === "pdf_raw";
+            if (hasSource) linkLines.push(`- **Full Copy:** [[${sourceNoteTitle(promoTitle)}]]`);
+
             const brainContent = [
               `# ${promoTitle}`,
               "",
@@ -309,6 +322,31 @@ export async function POST(req: NextRequest) {
                 else console.warn(`[brain] Auto-save failed for ${saved.id}: ${r.error}`);
               })
               .catch((e) => console.warn(`[brain] Auto-save error for ${saved.id}:`, e));
+
+            // Fire-and-forget: full source copy → vault. Vision-transcribes a
+            // scanned PDF (no text layer); the buffer is used directly because
+            // the Files API upload from the analysis is deleted in `finally`.
+            if (hasSource) {
+              void writeSourceCopyNote({
+                reviewId: saved.id,
+                promoTitle,
+                filename: file.name,
+                date: saved.date,
+                publisher: saved.publisher,
+                gurus: saved.gurus,
+                product: saved.product,
+                promoCode: saved.promoCode,
+                effectivenessScore: saved.effectivenessScore,
+                text: sourceText,
+                pdfBuffer: sourceText.trim() ? undefined : buffer,
+              }).then((r) =>
+                console.log(
+                  "[source-copy]",
+                  saved.id,
+                  r.ok ? `${r.mode} ${r.words} words → ${r.title}` : r.error
+                )
+              );
+            }
 
             // Fire-and-forget: write structured promo intelligence to the vault's
             // Promo Intelligence inbox for the Brain Agent to review and merge.

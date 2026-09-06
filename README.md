@@ -49,10 +49,20 @@ Set locally in `.env.local` (see `.env.example`); set in Railway for deploy.
 
 ### App-to-Brain Learning Loop
 
-On every successful analysis the analyzer teaches the brain two ways:
+On every successful analysis the analyzer teaches the brain three ways:
 
 1. **Reads** `Copywriting Principles.md` (Brain-Master-curated, read-only for the app) into the scoring prompt, so scoring improves as principles are curated.
 2. **Writes** one machine-comparable **Promo Pattern Ledger** row via the shared Brain API (`kind:"promo-ledger-row"`, `POST {BRAIN_API_URL}/api/intelligence`, header `x-hub-token`). The Brain API is the **only** writer of `Resources/Promo Analysis/Promo Pattern Ledger.md` (append-only splice). The analyzer never writes the ledger directly via the Contents API. Ledger failures are logged and never break the response.
+3. **Writes the promo's full source copy** to `Resources/Promo Analysis/Source Copy/Promo Copy - <promo>.md` (publisher directive 2026-09-06) so the primary text — not just the derived scores — is searchable in Obsidian and no longer single-copy on the app volume. `.docx` and text-layer PDFs are copied verbatim; a scanned PDF with no text layer is transcribed with a vision pass (`vision-transcribed` tag, and a callout on the note telling readers to verify wording before quoting it). The note frontmatter carries `review_id` + `analysis`, its body wikilinks the analysis / intel / publisher / guru / product notes, and the analysis note gains a `**Full Copy:**` link back. Vision transcriptions are serialized in-process (one at a time) — two concurrent 80 MB scans is the memory profile that has OOM'd this service.
+
+   Backfill promos analyzed before the directive:
+
+   ```bash
+   HUB_API_TOKEN=... node scripts/source-copy-backfill.mjs https://analyzer.oxfordhub.app
+   # --text-only / --vision-only to split the cheap pass from the vision pass
+   ```
+
+   The script is resumable (`.source-copy-backfill-progress.log`); `POST /api/source-copy {reviewId}` rewrites a single promo, and `GET /api/source-copy?reviewId=` reports which path it will take.
 
 ## Performance Learning Layer
 
