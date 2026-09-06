@@ -34,7 +34,7 @@ const done = new Set(
 const reviews = await (await fetch(`${BASE}/api/reviews`, { headers: AUTH })).json();
 console.log(`${reviews.length} reviews; ${done.size} already written (progress log)${ONLY ? `; filter: ${ONLY}` : ""}`);
 
-let ok = 0, skipped = 0, failed = 0, words = 0;
+let ok = 0, skipped = 0, failed = 0, words = 0, cost = 0;
 for (const r of reviews) {
   const name = r.displayName ?? r.filename;
   if (done.has(r.id)) { skipped++; continue; }
@@ -66,7 +66,11 @@ for (const r of reviews) {
           ? ` [linked to renamed note: ${j.analysisTitle}]`
           : ""
         : " (analysis note NOT linked — none in vault)";
-      console.log(`OK ${j.mode} ${j.words} words → ${j.title}${link}`);
+      const spend = j.usage
+        ? ` [${j.usage.turns} turn(s), ${(j.usage.cacheReadTokens / 1000).toFixed(0)}k cached, $${j.usage.costUsd.toFixed(3)}]`
+        : "";
+      console.log(`OK ${j.mode} ${j.words} words → ${j.title}${spend}${link}`);
+      cost += j.usage?.costUsd ?? 0;
       fs.appendFileSync(PROGRESS, `${r.id}\n`);
       words += j.words ?? 0;
       ok++;
@@ -80,4 +84,7 @@ for (const r of reviews) {
   }
   await sleep(PACE_MS);
 }
-console.log(`\nSource copy backfill: ${ok} written (${words.toLocaleString()} words), ${skipped} skipped, ${failed} failed.`);
+console.log(
+  `\nSource copy backfill: ${ok} written (${words.toLocaleString()} words), ${skipped} skipped, ${failed} failed` +
+    (cost > 0 ? `, $${cost.toFixed(2)} spent.` : ".")
+);

@@ -62,7 +62,7 @@ Rules:
 async function transcribePdfVisually(
   pdfBuffer: Buffer,
   promoTitle: string
-): Promise<string> {
+): Promise<{ text: string; usage: VisionUsage }> {
   const client = new Anthropic({ apiKey: getEnv("ANTHROPIC_API_KEY") });
   let fileId: string | null = null;
   try {
@@ -88,6 +88,7 @@ async function transcribePdfVisually(
     ];
 
     let out = "";
+    const tally = { turns: 0, inputTokens: 0, cacheWriteTokens: 0, cacheReadTokens: 0, outputTokens: 0 };
     // Up to 6 turns: one 32k-token turn covers most promos; the longest VSLs
     // and 60-page magalogs need continuations.
     for (let turn = 0; turn < 6; turn++) {
@@ -101,6 +102,11 @@ async function transcribePdfVisually(
         messages,
       });
       const msg = await stream.finalMessage();
+      tally.turns += 1;
+      tally.inputTokens += msg.usage.input_tokens ?? 0;
+      tally.cacheWriteTokens += msg.usage.cache_creation_input_tokens ?? 0;
+      tally.cacheReadTokens += msg.usage.cache_read_input_tokens ?? 0;
+      tally.outputTokens += msg.usage.output_tokens ?? 0;
       // Adaptive thinking can make content[0] a thinking block — take text blocks only.
       const part = msg.content
         .filter((b): b is Anthropic.Beta.BetaTextBlock => b.type === "text")
@@ -115,7 +121,7 @@ async function transcribePdfVisually(
           "Continue the transcription from exactly where you stopped. Do not repeat any text you already produced, and do not add commentary.",
       });
     }
-    return out.trim();
+    return { text: out.trim(), usage: { ...tally, costUsd: usageCost(tally) } };
   } finally {
     if (fileId) void client.beta.files.delete(fileId).catch(() => {});
   }
@@ -135,6 +141,33 @@ function queueVision<T>(fn: () => Promise<T>): Promise<T> {
     () => undefined
   );
   return run;
+}
+
+/**
+ * Sonnet 5 list prices, USD per million tokens (2026-09). Cache writes bill at
+ * 1.25x input, cache reads at 0.1x. Only used to report what a run cost — if
+ * the rates move, the reported dollars drift but nothing breaks.
+ */
+const PRICE_IN = 2.0;
+const PRICE_OUT = 10.0;
+
+export interface VisionUsage {
+  turns: number;
+  inputTokens: number;
+  cacheWriteTokens: number;
+  cacheReadTokens: number;
+  outputTokens: number;
+  costUsd: number;
+}
+
+function usageCost(u: Omit<VisionUsage, "costUsd">): number {
+  return (
+    (u.inputTokens * PRICE_IN +
+      u.cacheWriteTokens * PRICE_IN * 1.25 +
+      u.cacheReadTokens * PRICE_IN * 0.1 +
+      u.outputTokens * PRICE_OUT) /
+    1_000_000
+  );
 }
 
 export type SourceMode = "text" | "vision" | "none";
@@ -168,6 +201,8 @@ export interface SourceCopyResult {
   linked?: boolean;
   /** The analysis note this copy was linked to (differs when the promo was renamed). */
   analysisTitle?: string;
+  /** Token spend of the vision pass — absent on the text path, which costs nothing. */
+  usage?: VisionUsage;
   error?: string;
 }
 
@@ -254,6 +289,7 @@ export async function writeSourceCopyNote(params: SourceCopyParams): Promise<Sou
   try {
     let mode: SourceMode = "none";
     let body = "";
+    let usage: VisionUsage | undefined;
 
     if (params.text?.trim()) {
       mode = "text";
@@ -261,8 +297,10 @@ export async function writeSourceCopyNote(params: SourceCopyParams): Promise<Sou
     } else if (params.pdfBuffer) {
       mode = "vision";
       const pdf = params.pdfBuffer;
-      body = tidy(await queueVision(() => transcribePdfVisually(pdf, params.promoTitle)));
-      if (!body) return { ok: false, mode, error: "vision transcription returned nothing" };
+      const t = await queueVision(() => transcribePdfVisually(pdf, params.promoTitle));
+      body = tidy(t.text);
+      usage = t.usage;
+      if (!body) return { ok: false, mode, error: "vision transcription returned nothing", usage };
     } else {
       return { ok: false, mode: "none", error: "no source text or pdf" };
     }
@@ -288,7 +326,7 @@ export async function writeSourceCopyNote(params: SourceCopyParams): Promise<Sou
       /^- \*\*Review ID:\*\*/
     );
 
-    return { ok: true, mode, title, words: countWords(body), linked: linked.ok, analysisTitle };
+    return { ok: true, mode, title, words: countWords(body), linked: linked.ok, analysisTitle, usage };
   } catch (err) {
     const error = err instanceof Error ? err.message : "source copy write failed";
     console.warn(`[source-copy] failed for ${params.reviewId}: ${error}`);

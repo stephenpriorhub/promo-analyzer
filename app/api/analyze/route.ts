@@ -344,7 +344,9 @@ export async function POST(req: NextRequest) {
                 console.log(
                   "[source-copy]",
                   saved.id,
-                  r.ok ? `${r.mode} ${r.words} words → ${r.title}` : r.error
+                  r.ok
+                    ? `${r.mode} ${r.words} words → ${r.title}${r.usage ? ` [${r.usage.turns} turn(s), $${r.usage.costUsd.toFixed(3)}]` : ""}`
+                    : r.error
                 )
               );
             }
