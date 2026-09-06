@@ -61,7 +61,12 @@ for (const r of reviews) {
       fs.appendFileSync(PROGRESS, `${r.id}\n`);
       skipped++;
     } else if (j.ok) {
-      console.log(`OK ${j.mode} ${j.words} words → ${j.title}${j.linked ? "" : " (analysis note NOT linked)"}`);
+      const link = j.linked
+        ? j.analysisTitle && `Promo Copy - ${j.analysisTitle}` !== j.title
+          ? ` [linked to renamed note: ${j.analysisTitle}]`
+          : ""
+        : " (analysis note NOT linked — none in vault)";
+      console.log(`OK ${j.mode} ${j.words} words → ${j.title}${link}`);
       fs.appendFileSync(PROGRESS, `${r.id}\n`);
       words += j.words ?? 0;
       ok++;

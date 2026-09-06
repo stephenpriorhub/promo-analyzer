@@ -19,7 +19,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { ANALYSIS_MODEL } from "./models";
 import { getEnv } from "./env";
-import { writeBrainNote, addLineToBrainNote } from "./brain-writer";
+import { writeBrainNote, addLineToBrainNote, brainNoteExists } from "./brain-writer";
 import { intelNoteTitle } from "./promo-intel";
 
 /** Vault note title for a promo's full copy (mirrors `Promo Intel - X`). */
@@ -166,21 +166,40 @@ export interface SourceCopyResult {
   title?: string;
   words?: number;
   linked?: boolean;
+  /** The analysis note this copy was linked to (differs when the promo was renamed). */
+  analysisTitle?: string;
   error?: string;
+}
+
+/**
+ * An analysis note is titled from whatever the promo was called when it was
+ * analyzed. Renaming a promo in the app does not rename that note, so the
+ * current display name can point at nothing while the real note sits under the
+ * original upload filename. Prefer the display name; fall back to the filename
+ * when only that note exists (and to the display name when neither does, which
+ * leaves an unresolved link the Brain Agent can reconcile).
+ */
+export async function resolveAnalysisNoteTitle(promoTitle: string, filename: string): Promise<string> {
+  const fromFilename = filename.replace(/\.[^.]+$/, "").trim();
+  if (!fromFilename || fromFilename === promoTitle) return promoTitle;
+  if (await brainNoteExists(promoTitle, "promo-analysis-tool")) return promoTitle;
+  if (await brainNoteExists(fromFilename, "promo-analysis-tool")) return fromFilename;
+  return promoTitle;
 }
 
 export function buildSourceNote(
   params: SourceCopyParams,
   body: string,
   mode: Exclude<SourceMode, "none">,
-  truncatedByCap: boolean
+  truncatedByCap: boolean,
+  analysisTitle: string
 ): string {
   const { promoTitle, filename, date, publisher, gurus, product, promoCode, effectivenessScore, reviewId } = params;
   const today = new Date().toISOString().slice(0, 10);
   const sourceFormat =
     mode === "vision" ? "visual-pdf (vision transcription)" : filename.toLowerCase().endsWith(".pdf") ? "pdf (text layer)" : "document/transcript";
 
-  const links: string[] = [`- **Analysis:** [[${promoTitle}]]`, `- **Intel:** [[${intelNoteTitle(promoTitle)}]]`];
+  const links: string[] = [`- **Analysis:** [[${analysisTitle}]]`, `- **Intel:** [[${intelNoteTitle(promoTitle)}]]`];
   if (publisher) links.push(`- **Publisher:** [[${publisher}]]`);
   if (gurus?.length) links.push(`- **Guru(s):** ${gurus.map((g) => `[[${g}]]`).join(", ")}`);
   if (product) links.push(`- **Product:** [[${product}]]`);
@@ -193,7 +212,7 @@ export function buildSourceNote(
     `review_id: ${reviewId}`,
     `source_file: ${yamlQuote(filename)}`,
     `source_format: ${yamlQuote(sourceFormat)}`,
-    `analysis: ${yamlQuote(`[[${promoTitle}]]`)}`,
+    `analysis: ${yamlQuote(`[[${analysisTitle}]]`)}`,
     effectivenessScore != null ? `effectiveness: ${effectivenessScore}/10` : null,
     `words: ${countWords(body)}`,
     `analyzed: ${date}`,
@@ -255,20 +274,21 @@ export async function writeSourceCopyNote(params: SourceCopyParams): Promise<Sou
     }
 
     const title = sourceNoteTitle(params.promoTitle);
-    const content = buildSourceNote(params, body, mode, truncatedByCap);
+    const analysisTitle = await resolveAnalysisNoteTitle(params.promoTitle, params.filename);
+    const content = buildSourceNote(params, body, mode, truncatedByCap, analysisTitle);
     const res = await writeBrainNote(title, content, "source-copy");
     if (!res.ok) return { ok: false, mode, title, error: res.error };
 
     // Forward link from the analysis note (Obsidian backlinks cover the reverse,
     // but the publisher asked for an explicit link on the analysis note).
     const linked = await addLineToBrainNote(
-      params.promoTitle,
+      analysisTitle,
       "promo-analysis-tool",
       `- **Full Copy:** [[${title}]]`,
       /^- \*\*Review ID:\*\*/
     );
 
-    return { ok: true, mode, title, words: countWords(body), linked: linked.ok };
+    return { ok: true, mode, title, words: countWords(body), linked: linked.ok, analysisTitle };
   } catch (err) {
     const error = err instanceof Error ? err.message : "source copy write failed";
     console.warn(`[source-copy] failed for ${params.reviewId}: ${error}`);

@@ -126,6 +126,19 @@ async function githubPutWithRetry(
   throw lastErr;
 }
 
+/** Does a note already exist in the vault? Errors read as "no". */
+export async function brainNoteExists(title: string, subfolder: string): Promise<boolean> {
+  const safeTitle = title.replace(/[/\\?%*:|"<>]/g, "-").trim();
+  if (!safeTitle) return false;
+  const relPath = resolveRelPath(subfolder, safeTitle);
+  try {
+    if (process.env.GITHUB_TOKEN) return (await githubGetFile(relPath)) !== null;
+    return fs.existsSync(path.join(BRAIN_VAULT_ROOT, relPath));
+  } catch {
+    return false;
+  }
+}
+
 /** Write (create or overwrite) a note in an allowlisted vault subfolder. */
 export async function writeBrainNote(
   title: string,
