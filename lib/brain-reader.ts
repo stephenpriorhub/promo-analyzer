@@ -15,6 +15,7 @@ import path from "path";
 // for the Promo Details dropdowns when the live directory fetch is unavailable on
 // the server. Regenerate from the Financial Publishing Directory when it changes.
 import canonicalSnapshot from "./canonical-entities.json";
+import { detectGuruInText, GURU_ALIASES as DETECT_GURU_ALIASES } from "./detect-guru";
 
 const BRAIN_DIR =
   process.env.BRAIN_DIR?.replace(/\/Resources\/.*$/, "") ??
@@ -98,12 +99,9 @@ async function readVaultFile(relPath: string, localPath: string): Promise<string
   return readFileLocal(localPath);
 }
 
-/** Detect guru name from offer section text */
+/** Detect guru name from offer section text (whole-word full names + safe aliases). */
 export function detectGuru(offerText: string): string | null {
-  for (const guru of Object.keys(GURU_MAP)) {
-    if (offerText.toLowerCase().includes(guru.toLowerCase())) return guru;
-  }
-  return null;
+  return detectGuruInText(offerText, Object.keys(GURU_MAP), DETECT_GURU_ALIASES);
 }
 
 /** Detect publisher from offer section text */
