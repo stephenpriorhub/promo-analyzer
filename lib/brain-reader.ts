@@ -30,6 +30,7 @@ const GURU_MAP: Record<string, string> = {
   "Bryan Bottarelli": "Bryan Bottarelli.md",
   "Karim Rahemtulla": "Karim Rahemtulla.md",
   "Nate Bear": "Nate Bear.md",
+  "Matt McCall": "Matt McCall.md",
   "Chris Johnson": "Chris Johnson.md",
 };
 
@@ -61,7 +62,7 @@ function readFileLocal(filePath: string): string | null {
 /**
  * Read a vault file via the GitHub Contents API. Works on Railway where the
  * vault isn't mounted. `relPath` is repo-relative, e.g.
- * "Resources/Bryan Bottarelli.md". Returns null gracefully on any failure
+ * "Resources/Experts/Bryan Bottarelli.md". Returns null gracefully on any failure
  * (e.g. 404 for a guru with no profile) — never throws.
  */
 async function readViaGitHub(relPath: string): Promise<string | null> {
@@ -140,10 +141,15 @@ export async function loadBrainContext(offerText: string): Promise<BrainContext>
 
   let guruProfile: string | null = null;
   if (guru && GURU_MAP[guru]) {
-    guruProfile = await readVaultFile(
-      `Resources/${GURU_MAP[guru]}`,
-      path.join(RESOURCES, GURU_MAP[guru])
-    );
+    // Canonical layout is Resources/Experts/; keep flat Resources/ as fallback
+    // for any legacy notes that have not been moved yet.
+    const file = GURU_MAP[guru];
+    guruProfile =
+      (await readVaultFile(
+        `Resources/Experts/${file}`,
+        path.join(RESOURCES, "Experts", file)
+      )) ??
+      (await readVaultFile(`Resources/${file}`, path.join(RESOURCES, file)));
   }
 
   const copywritingPrinciples = await readVaultFile(
