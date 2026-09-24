@@ -15,6 +15,7 @@ import path from "path";
 // for the Promo Details dropdowns when the live directory fetch is unavailable on
 // the server. Regenerate from the Financial Publishing Directory when it changes.
 import canonicalSnapshot from "./canonical-entities.json";
+import { detectGuruInText, GURU_ALIASES as DETECT_GURU_ALIASES } from "./detect-guru";
 
 const BRAIN_DIR =
   process.env.BRAIN_DIR?.replace(/\/Resources\/.*$/, "") ??
@@ -30,6 +31,7 @@ const GURU_MAP: Record<string, string> = {
   "Bryan Bottarelli": "Bryan Bottarelli.md",
   "Karim Rahemtulla": "Karim Rahemtulla.md",
   "Nate Bear": "Nate Bear.md",
+  "Matt McCall": "Matt McCall.md",
   "Chris Johnson": "Chris Johnson.md",
 };
 
@@ -61,7 +63,7 @@ function readFileLocal(filePath: string): string | null {
 /**
  * Read a vault file via the GitHub Contents API. Works on Railway where the
  * vault isn't mounted. `relPath` is repo-relative, e.g.
- * "Resources/Bryan Bottarelli.md". Returns null gracefully on any failure
+ * "Resources/Experts/Bryan Bottarelli.md". Returns null gracefully on any failure
  * (e.g. 404 for a guru with no profile) — never throws.
  */
 async function readViaGitHub(relPath: string): Promise<string | null> {
@@ -97,12 +99,9 @@ async function readVaultFile(relPath: string, localPath: string): Promise<string
   return readFileLocal(localPath);
 }
 
-/** Detect guru name from offer section text */
+/** Detect guru name from offer section text (whole-word full names + safe aliases). */
 export function detectGuru(offerText: string): string | null {
-  for (const guru of Object.keys(GURU_MAP)) {
-    if (offerText.toLowerCase().includes(guru.toLowerCase())) return guru;
-  }
-  return null;
+  return detectGuruInText(offerText, Object.keys(GURU_MAP), DETECT_GURU_ALIASES);
 }
 
 /** Detect publisher from offer section text */
@@ -140,10 +139,15 @@ export async function loadBrainContext(offerText: string): Promise<BrainContext>
 
   let guruProfile: string | null = null;
   if (guru && GURU_MAP[guru]) {
-    guruProfile = await readVaultFile(
-      `Resources/${GURU_MAP[guru]}`,
-      path.join(RESOURCES, GURU_MAP[guru])
-    );
+    // Canonical layout is Resources/Experts/; keep flat Resources/ as fallback
+    // for any legacy notes that have not been moved yet.
+    const file = GURU_MAP[guru];
+    guruProfile =
+      (await readVaultFile(
+        `Resources/Experts/${file}`,
+        path.join(RESOURCES, "Experts", file)
+      )) ??
+      (await readVaultFile(`Resources/${file}`, path.join(RESOURCES, file)));
   }
 
   const copywritingPrinciples = await readVaultFile(
